@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs>
+<linearGradient id="tg1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#B8E986"/><stop offset="1" stop-color="#68B93C"/></linearGradient>
+<linearGradient id="tg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#C6743F"/><stop offset="1" stop-color="#7E5530"/></linearGradient>
+<radialGradient id="tg3" cx="0.35" cy="0.3"><stop offset="0" stop-color="#D6F2B4"/><stop offset="1" stop-color="#8ED058"/></radialGradient></defs>
+<ellipse cx="100" cy="180" rx="54" ry="11" fill="#1d3b1a" opacity=".10"/>
+<ellipse cx="100" cy="172" rx="48" ry="16" fill="url(#tg3)"/>
+<path d="M92 176V96a10 10 0 0 1 20 0v80z" fill="url(#tg2)"/>
+<path d="M100 124c-16 0-26-8-30-20M100 112c14 0 24-8 28-18" stroke="#7E5530" stroke-width="13" stroke-linecap="round" fill="none"/>
+<rect x="70" y="52" width="60" height="52" rx="24" fill="url(#tg1)"/>
+<rect x="24" y="72" width="52" height="44" rx="21" fill="url(#tg1)"/>
+<rect x="126" y="70" width="52" height="46" rx="22" fill="url(#tg1)"/>
+<rect x="78" y="20" width="46" height="42" rx="20" fill="url(#tg3)"/>
+<ellipse cx="88" cy="34" rx="11" ry="7" fill="#fff" opacity=".45"/>
+<ellipse cx="40" cy="84" rx="10" ry="6" fill="#fff" opacity=".35"/>
+<ellipse cx="140" cy="82" rx="10" ry="6" fill="#fff" opacity=".35"/></svg>

@@ -1,0 +1,20 @@
+{
+  "name": "印尼语学习",
+  "short_name": "印尼语",
+  "description": "单词包、场景对话、语法学习",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f9fc",
+  "theme_color": "#f7f9fc",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "assets/openmoji/1F4D6.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

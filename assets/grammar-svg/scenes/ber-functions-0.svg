@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 200"><style>
+#lf{animation:sw 1s ease-in-out infinite;transform-origin:top center;transform-box:fill-box}
+#lb{animation:sw2 1s ease-in-out infinite;transform-origin:top center;transform-box:fill-box}
+#af{animation:sw2 1s ease-in-out infinite;transform-origin:top center;transform-box:fill-box}
+#bod{animation:bob 1s ease-in-out infinite}
+#g1{animation:slide 1.4s linear infinite}
+@keyframes sw{0%,100%{transform:rotate(-22deg)}50%{transform:rotate(24deg)}}
+@keyframes sw2{0%,100%{transform:rotate(24deg)}50%{transform:rotate(-22deg)}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes slide{to{stroke-dashoffset:-46}}
+</style>
+<ellipse cx="130" cy="182" rx="92" ry="9" fill="#1b2e56" opacity=".08"/>
+<path id="g1" d="M18 176h224" stroke="#9DB8FB" stroke-width="7" stroke-linecap="round" stroke-dasharray="16 14"/>
+<g id="bod"><circle cx="130" cy="46" r="26" fill="#FFE3C4" stroke="#E0B07A" stroke-width="4"/>
+<path d="M104 38c0-16 12-26 26-26s26 10 26 26z" fill="#3560D6"/>
+<path d="M130 72l-18 62h40l-14-62z" fill="#4FAF6A"/>
+<path id="af" d="M120 84l-26 34" stroke="#4FAF6A" stroke-width="13" stroke-linecap="round"/>
+<path d="M144 84l26 30" stroke="#3fa05c" stroke-width="13" stroke-linecap="round"/></g>
+<path id="lf" d="M124 130l-16 44" stroke="#3560D6" stroke-width="15" stroke-linecap="round"/>
+<path id="lb" d="M140 130l18 44" stroke="#2f55c4" stroke-width="15" stroke-linecap="round"/></svg>

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 200"><style>
+#h1{animation:tap .5s ease-in-out infinite;transform-origin:top center;transform-box:fill-box}
+#h2{animation:tap .5s ease-in-out .25s infinite;transform-origin:top center;transform-box:fill-box}
+#scr{animation:glow 2s ease-in-out infinite}
+@keyframes tap{0%,100%{transform:translateY(0)}50%{transform:translateY(4px)}}
+@keyframes glow{0%,100%{opacity:.85}50%{opacity:1}}
+</style>
+<ellipse cx="130" cy="182" rx="96" ry="9" fill="#1b2e56" opacity=".08"/>
+<circle cx="130" cy="46" r="26" fill="#FFE3C4" stroke="#E0B07A" stroke-width="4"/>
+<path d="M104 40c0-16 12-28 26-28s26 12 26 28z" fill="#8459EE"/>
+<path d="M130 72l-24 68h48l-24-68z" fill="#4a90ef"/>
+<path id="h1" d="M112 92l-20 44" stroke="#4a90ef" stroke-width="13" stroke-linecap="round"/>
+<path id="h2" d="M148 92l20 44" stroke="#3560D6" stroke-width="13" stroke-linecap="round"/>
+<rect x="26" y="150" width="208" height="22" rx="11" fill="#C6743F"/>
+<path d="M74 150l16-44h80l16 44z" fill="#DCE7F7"/>
+<rect id="scr" x="92" y="106" width="76" height="34" rx="5" fill="#3560D6"/>
+<path d="M104 118h52M104 130h34" stroke="#9DB8FB" stroke-width="5" stroke-linecap="round"/></svg>

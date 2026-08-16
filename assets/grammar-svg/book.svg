@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <path d="M15 29c17-4 31-1 45 9v57c-13-10-28-13-45-9V29Z" fill="#EAF3FF" stroke="#2A78E7" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M105 29c-17-4-31-1-45 9v57c13-10 28-13 45-9V29Z" fill="#fff" stroke="#2A78E7" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M28 48c9-1 16 1 23 5M28 62c9-1 16 1 23 5M92 48c-9-1-16 1-23 5" fill="none" stroke="#85B4EE" stroke-width="4" stroke-linecap="round"/>
+  <animateTransform attributeName="transform" type="rotate" values="0 60 65;-1.5 60 65;0 60 65" dur="3.6s" repeatCount="indefinite"/>
+</svg>

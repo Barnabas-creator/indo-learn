@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><linearGradient id="r1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#79A2FA"/><stop offset="1" stop-color="#3560D6"/></linearGradient><linearGradient id="r2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9EE0A8"/><stop offset="1" stop-color="#4FAF6A"/></linearGradient><linearGradient id="r3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#C3AEFB"/><stop offset="1" stop-color="#8B6DF0"/></linearGradient></defs>
+<ellipse cx="100" cy="176" rx="66" ry="11" fill="#1b2e56" opacity=".10"/>
+<ellipse cx="100" cy="106" rx="86" ry="52" fill="none" stroke="#CBDBF3" stroke-width="7" transform="rotate(-14 100 106)"/>
+<rect x="52" y="76" width="96" height="88" rx="26" fill="url(#r1)"/>
+<text x="100" y="132" font-family="Arial" font-size="34" font-weight="900" fill="#fff" text-anchor="middle">ber-</text>
+<circle cx="126" cy="42" r="26" fill="url(#r2)"/><path d="M120 32l6 8 8-6M118 50l10-4 8 6" stroke="#fff" stroke-width="5" stroke-linecap="round" fill="none"/><circle cx="126" cy="34" r="5" fill="#fff"/>
+<circle cx="34" cy="130" r="24" fill="url(#r3)"/><circle cx="34" cy="122" r="8" fill="#fff"/><path d="M22 140c3-9 8-13 12-13s9 4 12 13z" fill="#fff"/>
+<circle cx="164" cy="128" r="24" fill="url(#r2)"/><path d="M156 136l16-16m-4-6a9 9 0 1 0 10 10" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none"/></svg>

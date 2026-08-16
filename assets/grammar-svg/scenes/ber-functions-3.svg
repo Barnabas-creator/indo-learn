@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 200">
+<style>
+#tail{animation:wag 1.6s ease-in-out infinite;transform-origin:0% 100%;transform-box:fill-box}
+#tail2{animation:wag2 1.4s ease-in-out infinite;transform-origin:0% 100%;transform-box:fill-box}
+#eyes,#eyes2{animation:blink 3.4s ease-in-out infinite}
+#kitten{animation:hop 1.8s ease-in-out infinite;transform-origin:center bottom;transform-box:fill-box}
+@keyframes wag{0%,100%{transform:rotate(-14deg)}50%{transform:rotate(16deg)}}
+@keyframes wag2{0%,100%{transform:rotate(12deg)}50%{transform:rotate(-14deg)}}
+@keyframes blink{0%,92%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
+@keyframes hop{0%,100%{transform:translateY(0)}45%{transform:translateY(-6px)}}
+</style>
+<ellipse cx="130" cy="180" rx="98" ry="10" fill="#1b2e56" opacity=".08"/>
+<path id="tail" d="M78 150c-30 4-44-10-40-30" stroke="#E8A81C" stroke-width="13" stroke-linecap="round" fill="none"/>
+<path d="M96 106l-12-32 30 16zM160 106l12-32-30 16z" fill="#F2B45C"/>
+<path d="M100 100l-6-16 15 8zM156 100l6-16-15 8z" fill="#F7C9A0"/>
+<ellipse cx="128" cy="150" rx="48" ry="34" fill="#F2B45C"/>
+<ellipse cx="128" cy="158" rx="30" ry="22" fill="#FFF1DC"/>
+<circle cx="128" cy="106" r="44" fill="#F2B45C"/>
+<g id="eyes" style="transform-origin:128px 100px"><circle cx="112" cy="100" r="7" fill="#4a3420"/><circle cx="144" cy="100" r="7" fill="#4a3420"/><circle cx="115" cy="97" r="2.5" fill="#fff"/><circle cx="147" cy="97" r="2.5" fill="#fff"/></g>
+<path d="M128 112l-7 6 7 5 7-5z" fill="#E2574B"/>
+<path d="M128 123c-6 8-16 6-18-2M128 123c6 8 16 6 18-2" stroke="#8a6636" stroke-width="4" stroke-linecap="round" fill="none"/>
+<path d="M84 108h-22M84 118l-22 6M172 108h22M172 118l22 6" stroke="#D9B489" stroke-width="4" stroke-linecap="round"/>
+<g id="kitten">
+<path id="tail2" d="M214 160c22 2 30-8 26-22" stroke="#E8A81C" stroke-width="9" stroke-linecap="round" fill="none"/>
+<path d="M192 132l-8-22 20 11zM230 132l8-22-20 11z" fill="#F2B45C"/>
+<ellipse cx="211" cy="158" rx="28" ry="20" fill="#F2B45C"/>
+<ellipse cx="211" cy="163" rx="17" ry="12" fill="#FFF1DC"/>
+<circle cx="211" cy="130" r="26" fill="#F2B45C"/>
+<g id="eyes2" style="transform-origin:211px 126px"><circle cx="202" cy="126" r="4.5" fill="#4a3420"/><circle cx="220" cy="126" r="4.5" fill="#4a3420"/></g>
+<path d="M211 134l-4 4 4 3 4-3z" fill="#E2574B"/>
+<path d="M211 141c-4 5-10 4-11-1M211 141c4 5 10 4 11-1" stroke="#8a6636" stroke-width="3" stroke-linecap="round" fill="none"/>
+</g>
+</svg>

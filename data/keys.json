@@ -1,0 +1,11 @@
+{
+  "version": "v1",
+  "kdf": {
+    "name": "PBKDF2",
+    "hash": "SHA-256",
+    "salt": "k+lIoXYVF1fWBqJCKnkLQw==",
+    "iterations": 250000
+  },
+  "iv": "ERp06SCnwQuuanZe",
+  "wrapped": "L9AsnSZvWDsPSwWZ0E5F0aWe76ACaeiaPtoy6UyertHzuLvhSGr5yKj5kR7uPGx9"
+}

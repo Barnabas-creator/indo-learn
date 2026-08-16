@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 200"><style>
+#cr{animation:pop 2s ease-in-out infinite;transform-origin:130px 66px}
+#gl{animation:gl 2s ease-in-out infinite}
+@keyframes pop{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-7px) scale(1.06)}}
+@keyframes gl{0%,100%{opacity:.22}50%{opacity:.55}}
+</style>
+<ellipse cx="130" cy="188" rx="106" ry="9" fill="#1b2e56" opacity=".08"/>
+<rect id="gl" x="84" y="34" width="92" height="146" rx="16" fill="#FFD873"/>
+<rect x="14" y="120" width="72" height="60" rx="10" fill="#9DB8FB"/>
+<rect x="174" y="140" width="72" height="40" rx="10" fill="#9DB8FB"/>
+<rect x="88" y="76" width="84" height="104" rx="12" fill="#4a90ef"/>
+<rect x="14" y="174" width="232" height="14" rx="7" fill="#3560D6"/>
+<g id="cr"><path d="M96 64l10-26 24 18 24-18 10 26z" fill="#F2B45C"/>
+<rect x="94" y="62" width="72" height="12" rx="6" fill="#E8A81C"/></g></svg>
