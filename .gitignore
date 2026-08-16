@@ -1,0 +1,13 @@
+# 解包所得的参考资料，仅供开发时查阅，不发布
+reference/
+
+# 打包脚本的明文输入 — 加密前的内容原文绝不提交
+content-src/
+*.plain.json
+
+# 密码/密钥
+.env
+*.secret
+
+node_modules/
+.DS_Store
