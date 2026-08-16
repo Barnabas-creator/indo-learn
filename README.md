@@ -12,13 +12,15 @@
 | 语法学习 | 8 个模块 / 61 课 / 217 条词缀条目（meN- / ber- / ter- / peN- / di- 体系） |
 | 配图 | 400 个 OpenMoji SVG，词条专属配图覆盖 854/1000（85%），其余走主题图 |
 
-## ⚠️ 上线前必做
+## 打包内容
 
-当前打包用的是**占位密码 `REDACTED`**，必须换成你自己的密码后重新打包：
+密码从命令行参数或 `CONTENT_PASSWORD` 环境变量读取，**绝不写进仓库任何文件**：
 
 ```bash
-node tools/pack-content.mjs --password '你的密码' --version v1
+node tools/pack-content.mjs --password "$(cat ~/.indo-pass)" --version v1
 ```
+
+（`~/.indo-pass` 是本机上保存密码的文件，在仓库之外。）
 
 ## 换密码
 
