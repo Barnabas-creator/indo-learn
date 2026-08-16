@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 200">
+<style>
+#w1,#w2{animation:spin 1.1s linear infinite;transform-origin:center;transform-box:fill-box}
+#legf{animation:pedalA 1.1s linear infinite;transform-origin:70% 10%;transform-box:fill-box}
+#legb{animation:pedalB 1.1s linear infinite;transform-origin:70% 10%;transform-box:fill-box}
+#rider{animation:bob 1.1s ease-in-out infinite;transform-origin:center;transform-box:fill-box}
+#dash{animation:dash 1.1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pedalA{0%,100%{transform:rotate(-16deg)}50%{transform:rotate(16deg)}}
+@keyframes pedalB{0%,100%{transform:rotate(16deg)}50%{transform:rotate(-16deg)}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes dash{to{stroke-dashoffset:-40}}
+</style>
+<ellipse cx="130" cy="176" rx="96" ry="9" fill="#1b2e56" opacity=".08"/>
+<path id="dash" d="M8 168h60" stroke="#9DB8FB" stroke-width="6" stroke-linecap="round" stroke-dasharray="14 12"/>
+<g id="w1"><circle cx="72" cy="140" r="30" fill="none" stroke="#3560D6" stroke-width="9"/><path d="M72 112v56M44 140h56M52 120l40 40M92 120l-40 40" stroke="#9DB8FB" stroke-width="5"/></g>
+<g id="w2"><circle cx="192" cy="140" r="30" fill="none" stroke="#3560D6" stroke-width="9"/><path d="M192 112v56M164 140h56M172 120l40 40M212 120l-40 40" stroke="#9DB8FB" stroke-width="5"/></g>
+<path d="M72 140l38-46h38l-26 46z" fill="none" stroke="#4a90ef" stroke-width="9" stroke-linejoin="round"/>
+<path d="M132 140l16-46M110 94h44" stroke="#4a90ef" stroke-width="9" stroke-linecap="round"/>
+<path d="M148 94l30 46" stroke="#4a90ef" stroke-width="9" stroke-linecap="round"/>
+<path d="M100 88h26" stroke="#2f55c4" stroke-width="9" stroke-linecap="round"/>
+<path d="M166 84h24" stroke="#2f55c4" stroke-width="9" stroke-linecap="round"/>
+<circle cx="132" cy="140" r="9" fill="#F2B45C"/>
+<g id="rider">
+<circle cx="140" cy="42" r="20" fill="#FFE3C4" stroke="#E0B07A" stroke-width="3"/>
+<path d="M120 32c0-12 9-20 20-20s20 8 20 20z" fill="#E2574B"/>
+<path d="M140 62l-8 34h34l-10-34z" fill="#4FAF6A"/>
+<path d="M148 70l30 12" stroke="#4FAF6A" stroke-width="10" stroke-linecap="round"/>
+<path id="legf" d="M142 94l-6 32" stroke="#3560D6" stroke-width="11" stroke-linecap="round"/>
+<path id="legb" d="M152 94l-14 30" stroke="#2f55c4" stroke-width="11" stroke-linecap="round"/>
+</g>
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs>
+<linearGradient id="e1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A9C9FC"/><stop offset="1" stop-color="#6C9DF2"/></linearGradient>
+<radialGradient id="e2" cx=".36" cy=".3"><stop offset="0" stop-color="#9FD4F7"/><stop offset="1" stop-color="#3E8FDD"/></radialGradient></defs>
+<ellipse cx="100" cy="168" rx="60" ry="10" fill="#1b2e56" opacity=".08"/>
+<path d="M100 42c46 0 78 32 90 56-12 24-44 56-90 56s-78-32-90-56c12-24 44-56 90-56z" fill="url(#e1)"/>
+<path d="M100 60c34 0 60 22 72 38-12 16-38 38-72 38s-60-22-72-38c12-16 38-38 72-38z" fill="#fff"/>
+<circle cx="100" cy="98" r="31" fill="url(#e2)"/>
+<circle cx="100" cy="98" r="13" fill="#2b6cae" opacity=".45"/>
+<circle cx="89" cy="87" r="11" fill="#fff"/>
+<circle cx="112" cy="110" r="5" fill="#fff" opacity=".75"/>
+</svg>

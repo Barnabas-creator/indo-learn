@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 200"><style>
+#dr{animation:opn 3s ease-in-out infinite;transform-origin:left center;transform-box:fill-box}
+#ray{animation:ray 3s ease-in-out infinite}
+@keyframes opn{0%,20%{transform:scaleX(1)}55%,100%{transform:scaleX(.35)}}
+@keyframes ray{0%,25%{opacity:0}60%,100%{opacity:.9}}
+</style>
+<ellipse cx="130" cy="186" rx="88" ry="9" fill="#1b2e56" opacity=".08"/>
+<rect x="58" y="18" width="144" height="162" rx="12" fill="#DCE7F7"/>
+<rect id="ray" x="74" y="32" width="112" height="144" rx="6" fill="#FFD873"/>
+<rect id="dr" x="74" y="32" width="112" height="144" rx="6" fill="#4a90ef"/>
+<circle cx="168" cy="106" r="7" fill="#FFD873"/>
+<rect x="48" y="176" width="164" height="14" rx="7" fill="#8aa5c4"/></svg>
