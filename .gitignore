@@ -5,6 +5,10 @@ reference/
 content-src/
 *.plain.json
 
+# 审校表含全部词条与对话的明文，提交到公开仓库会绕过加密
+*审校*.xlsx
+*review*.xlsx
+
 # 密码/密钥
 .env
 *.secret

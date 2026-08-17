@@ -108,7 +108,26 @@ node tools/pack-content.mjs --password '密码' --version v1
 ## 关于内容质量
 
 印尼语词条与例句由 AI 生成，可能存在不地道或出错之处，请抽查后再作正式使用。
-发现问题改 `content-src/batches/batch-*.json`，然后重跑合并、校验、打包三步。
+
+导出一份可批注的审校表（需要 `openpyxl`，仅审校用）：
+
+```bash
+python3 tools/export-review.py
+```
+
+产出 `印尼语词库审校.xlsx`，四个工作表：说明 / 词条（1000 行）/ 对话（100 行）/
+关键句与生词（100 行）。每行末尾有「判定」下拉和「修改建议」空白列，母语者可以直接填。
+
+**这份表是全部内容的明文，已在 `.gitignore` 里 —— 绝不能提交到公开仓库**，
+否则加密就白做了。
+
+改完后回填 `content-src/batches/batch-*.json`，再重跑：
+
+```bash
+node tools/merge-batches.mjs && node tools/check-content.mjs
+node tools/pack-content.mjs --password "$(cat ~/.indo-pass)" --version v1
+git add data && git commit -m "chore: 内容修订" && git push
+```
 
 ## 授权
 
