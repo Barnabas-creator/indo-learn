@@ -48,6 +48,22 @@ node tools/pack-content.mjs --password '新密码' --version v2
 - 要实现即时吊销，唯一途径是服务器下发短期令牌 —— `lib/provider.js`
   已为此预留了接口，届时新增 `RemoteProvider` 替换即可，UI 层不用改。
 
+## 部署
+
+已上线：<https://barnabas-creator.github.io/indo-learn/>
+
+GitHub Pages 走「从 `main` 分支根目录部署」，没有构建步骤、没有 Actions 工作流。
+推到 `main` 即自动发布。
+
+改完内容后的发布流程：
+
+```bash
+node tools/check-content.mjs
+node tools/pack-content.mjs --password "$(cat ~/.indo-pass)" --version v1
+node --test tools/*.test.mjs
+git add data && git commit -m "chore: 更新内容" && git push
+```
+
 ## 本地开发
 
 ```bash
