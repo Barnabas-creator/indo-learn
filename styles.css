@@ -357,3 +357,15 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .attribution a { color: var(--mute); }
 
 @media (min-width: 640px) { .pack-grid { grid-template-columns: repeat(3, 1fr); } }
+
+.dialog-situasi {
+  margin: 0 0 12px; padding: 10px 13px; font-size: 14px; line-height: 1.55;
+  color: var(--ink); background: var(--moss-soft); border-radius: 12px;
+}
+.key-phrases .ganti { flex-basis: 100%; font-size: 12.5px; color: var(--clove); }
+.dialog-tips { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.dialog-tips li {
+  padding: 10px 13px; font-size: 13.5px; line-height: 1.6; color: var(--mute);
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+}
+.dialog-tips li::before { content: '· '; color: var(--clove); }

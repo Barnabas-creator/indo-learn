@@ -8,7 +8,7 @@
 | 模块 | 内容 |
 |---|---|
 | 单词包 | 初级 102 包 + 中级 100 包 = 2020 词条（词 + 词性 + 中文释义 + 例句 + 例句翻译）；高级 60 包只有主题骨架 |
-| 场景对话 | 10 组（打招呼 / 买东西 / 点餐 / 问路 / 看病 / 坐车 / 租房 / 银行 / 学校 / 教会），每组 10 轮 + 关键句 + 生词 |
+| 场景对话 | 25 组 / 364 轮。每组含场景说明、12–16 轮对话、6 条关键句（标可替换部分）、8 个生词、2–3 条本地贴士 |
 | 语法学习 | 8 个模块 / 61 课 / 217 条词缀条目（meN- / ber- / ter- / peN- / di- 体系） |
 | 配图 | 557 个 OpenMoji SVG，词条专属配图覆盖 1465/2020（73%），其余走主题图（每个主题都有专属图）|
 
@@ -97,6 +97,7 @@ node tools/extract-packs.mjs                       # reference/packs.js + extra-
 node tools/build-catalog.mjs                       # 骨架 -> lib/catalog.js（明文，App 直接 import）
 node tools/extract-grammar.mjs                     # 提取语法课程 + SVG 插图
 node tools/merge-batches.mjs                       # batches/*.json -> content-src/words.json（按包 id 索引）
+node tools/merge-dialogs.mjs                       # dialogs/*.json -> content-src/dialogs.json
 node tools/check-content.mjs                       # 校验词库与对话，并列出例句里的生词
 node tools/fetch-openmoji.mjs                      # 按映射表拉取用到的 OpenMoji SVG
 node tools/pack-content.mjs --password '密码' --version v1

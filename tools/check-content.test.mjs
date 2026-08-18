@@ -58,13 +58,20 @@ const goodDialog = [
     id: 'sapaan',
     scene: 'Sapaan',
     sceneZh: '打招呼',
-    lines: Array.from({ length: 8 }, (_, i) => ({
+    situasi: '第一次见面时用。',
+    lines: Array.from({ length: 12 }, (_, i) => ({
       speaker: i % 2 === 0 ? 'A' : 'B',
       id_text: `Baris ${i}.`,
       zh: `第 ${i} 句。`,
     })),
-    keyPhrases: [{ id_text: 'Selamat pagi', zh: '早上好' }],
-    vocab: [{ word: 'pagi', zh: '早晨' }],
+    keyPhrases: Array.from({ length: 6 }, (_, i) => ({
+      id_text: `Kalimat ${i}`,
+      zh: `句 ${i}`,
+      // 一半标可替换即可
+      ...(i % 2 === 0 ? { ganti: `bagian ${i}` } : {}),
+    })),
+    vocab: Array.from({ length: 8 }, (_, i) => ({ word: `kata${i}`, zh: `词${i}` })),
+    tips: ['贴士一', '贴士二'],
   },
 ];
 
@@ -72,10 +79,10 @@ test('合格对话无问题', () => {
   assert.deepEqual(validateDialogs(goodDialog), []);
 });
 
-test('轮次少于 8 报错', () => {
+test('轮次少于 12 报错', () => {
   const bad = structuredClone(goodDialog);
-  bad[0].lines = bad[0].lines.slice(0, 5);
-  assert.match(validateDialogs(bad)[0], /5 轮/);
+  bad[0].lines = bad[0].lines.slice(0, 8);
+  assert.match(validateDialogs(bad)[0], /8 轮/);
 });
 
 test('说话人必须交替', () => {
@@ -84,16 +91,34 @@ test('说话人必须交替', () => {
   assert.ok(validateDialogs(bad).some((p) => /说话人未交替/.test(p)));
 });
 
-test('缺关键句报错', () => {
+test('缺场景说明报错', () => {
   const bad = structuredClone(goodDialog);
-  bad[0].keyPhrases = [];
-  assert.ok(validateDialogs(bad).some((p) => /关键句/.test(p)));
+  delete bad[0].situasi;
+  assert.ok(validateDialogs(bad).some((p) => /situasi/.test(p)));
 });
 
-test('缺生词报错', () => {
+test('贴士少于两条报错', () => {
   const bad = structuredClone(goodDialog);
-  bad[0].vocab = [];
-  assert.ok(validateDialogs(bad).some((p) => /生词/.test(p)));
+  bad[0].tips = ['只有一条'];
+  assert.ok(validateDialogs(bad).some((p) => /贴士/.test(p)));
+});
+
+test('关键句不足 6 条报错', () => {
+  const bad = structuredClone(goodDialog);
+  bad[0].keyPhrases = bad[0].keyPhrases.slice(0, 4);
+  assert.ok(validateDialogs(bad).some((p) => /关键句少于/.test(p)));
+});
+
+test('标了可替换部分的关键句不过半要报错', () => {
+  const bad = structuredClone(goodDialog);
+  bad[0].keyPhrases = bad[0].keyPhrases.map((k) => ({ id_text: k.id_text, zh: k.zh }));
+  assert.ok(validateDialogs(bad).some((p) => /ganti/.test(p)));
+});
+
+test('生词不足 8 个报错', () => {
+  const bad = structuredClone(goodDialog);
+  bad[0].vocab = bad[0].vocab.slice(0, 5);
+  assert.ok(validateDialogs(bad).some((p) => /生词少于/.test(p)));
 });
 
 // —— 跨包重复词 ——

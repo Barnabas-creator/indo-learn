@@ -142,11 +142,15 @@ export function checkExampleVocabulary(packs, knownWords = []) {
 
 export function validateDialogs(dialogs) {
   const problems = [];
+  const seen = new Set();
   for (const d of dialogs ?? []) {
+    if (seen.has(d.id)) problems.push(`对话 ${d.id} 重复出现`);
+    seen.add(d.id);
+
     const lines = d.lines ?? [];
-    if (lines.length < 8 || lines.length > 12) {
+    if (lines.length < 12 || lines.length > 16) {
       problems.push(
-        `对话 ${d.id}（${d.sceneZh}）有 ${lines.length} 轮，应为 8–12 轮`,
+        `对话 ${d.id}（${d.sceneZh}）有 ${lines.length} 轮，应为 12–16 轮`,
       );
     }
     for (let i = 1; i < lines.length; i++) {
@@ -159,8 +163,25 @@ export function validateDialogs(dialogs) {
       if (!l.id_text) problems.push(`对话 ${d.id} 第 ${i + 1} 行缺 id_text`);
       if (!l.zh) problems.push(`对话 ${d.id} 第 ${i + 1} 行缺 zh`);
     }
-    if (!(d.keyPhrases ?? []).length) problems.push(`对话 ${d.id} 缺关键句`);
-    if (!(d.vocab ?? []).length) problems.push(`对话 ${d.id} 缺生词`);
+
+    // 场景说明与贴士是「实用」的主要载体，缺了这组对话就退回教科书对白
+    if (!d.situasi) problems.push(`对话 ${d.id} 缺场景说明 situasi`);
+    if ((d.tips ?? []).length < 2) {
+      problems.push(`对话 ${d.id} 贴士少于 2 条`);
+    }
+    if ((d.keyPhrases ?? []).length < 6) {
+      problems.push(`对话 ${d.id} 关键句少于 6 条`);
+    }
+    if ((d.vocab ?? []).length < 8) {
+      problems.push(`对话 ${d.id} 生词少于 8 个`);
+    }
+    // 关键句要能套用：至少一半标出可替换部分
+    const withGanti = (d.keyPhrases ?? []).filter((k) => k.ganti).length;
+    if ((d.keyPhrases ?? []).length && withGanti * 2 < d.keyPhrases.length) {
+      problems.push(
+        `对话 ${d.id} 只有 ${withGanti} 条关键句标了可替换部分（ganti），应过半`,
+      );
+    }
   }
   return problems;
 }
