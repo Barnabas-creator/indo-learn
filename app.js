@@ -46,6 +46,15 @@ export function start(root, provider, tts) {
     };
   }
 
+  // 内容是异步取的，取不到就给一句错误 + 回首页，别留白屏。
+  function guard(promise, fn) {
+    return promise.then(fn).catch((err) => {
+      root.innerHTML = `<div class="stack"><div class="crumb"><button class="back">← 返回</button></div>`
+        + `<p class="error">内容加载失败：${err.message || '请检查网络后重试'}</p></div>`;
+      root.querySelector('.back').addEventListener('click', () => { view = 'home'; render(); });
+    });
+  }
+
   function mount(fn) {
     const main = document.createElement('div');
     root.innerHTML = '';
@@ -127,7 +136,7 @@ export function start(root, provider, tts) {
     }
 
     if (view === 'dialogList') {
-      return provider.getDialogs().then((dialogs) =>
+      return guard(provider.getDialogs(), (dialogs) =>
         mount((m) =>
           renderDialogList(m, dialogs, {
             back: () => { view = 'home'; render(); },
@@ -138,7 +147,7 @@ export function start(root, provider, tts) {
     }
 
     if (view === 'dialogDetail') {
-      return provider.getDialogs().then((dialogs) =>
+      return guard(provider.getDialogs(), (dialogs) =>
         mount((m) =>
           renderDialog(m, dialogs.find((d) => d.id === detailId), {
             tts,
@@ -149,7 +158,7 @@ export function start(root, provider, tts) {
     }
 
     if (view === 'grammarList') {
-      return provider.getGrammar().then((grammar) =>
+      return guard(provider.getGrammar(), (grammar) =>
         mount((m) =>
           renderGrammarList(m, grammar, {
             back: () => { view = 'home'; render(); },
@@ -160,7 +169,7 @@ export function start(root, provider, tts) {
     }
 
     if (view === 'grammarModule') {
-      return provider.getGrammar().then((grammar) =>
+      return guard(provider.getGrammar(), (grammar) =>
         mount((m) =>
           renderGrammarModule(m, grammar.find((g) => g.id === detailId), {
             tts,
@@ -175,10 +184,17 @@ export function start(root, provider, tts) {
     try {
       const { unlocked } = await provider.init();
       if (!unlocked) return showUnlock();
-      beginnerPacks = await provider.getPacks();
+      try {
+        beginnerPacks = await provider.getPacks();
+      } catch {
+        // 存下来的凭据能解开这一版内容，是没法只靠版本号断定的：
+        // 解不开就丢掉凭据回解锁页，别把用户堵在死页面上。
+        provider.lock();
+        return showUnlock('内容已更新，请重新输入密码');
+      }
       render();
     } catch (err) {
-      root.innerHTML = `<p class="error">加载失败：${err.message}</p>`;
+      root.innerHTML = `<p class="error">加载失败：${err.message || '内容读取出错'}</p>`;
     }
   })();
 }
