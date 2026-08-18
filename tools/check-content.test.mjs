@@ -95,3 +95,52 @@ test('缺生词报错', () => {
   bad[0].vocab = [];
   assert.ok(validateDialogs(bad).some((p) => /生词/.test(p)));
 });
+
+// —— 跨包重复词 ——
+import { validateNoCrossLevelDupes, checkExampleVocabulary, stemCandidates } from './check-content.mjs';
+
+const twoPacks = [
+  { id: 'a', title: 'A', words: [{ word: 'segar' }, { word: 'manis' }] },
+  { id: 'b', title: 'B', words: [{ word: 'segar' }, { word: 'pahit' }] },
+];
+
+test('同一个词出现在两个包里报错', () => {
+  const out = validateNoCrossLevelDupes(twoPacks);
+  assert.equal(out.length, 1);
+  assert.match(out[0], /segar.*a.*b/);
+});
+
+test('包内重复不由跨包校验负责', () => {
+  const same = [{ id: 'a', title: 'A', words: [{ word: 'segar' }, { word: 'segar' }] }];
+  assert.deepEqual(validateNoCrossLevelDupes(same), []);
+});
+
+// —— 例句用词 ——
+test('meN- 吃掉词根首字母仍算派生词', () => {
+  assert.ok(stemCandidates('menolong').includes('tolong'));
+  assert.ok(stemCandidates('mengirim').includes('kirim'));
+  assert.ok(stemCandidates('memakai').includes('pakai'));
+  assert.ok(stemCandidates('menyapu').includes('sapu'));
+});
+
+test('后缀也能还原', () => {
+  assert.ok(stemCandidates('pekerjaan').includes('kerja'));
+  assert.ok(stemCandidates('menyelesaikan').includes('selesai'));
+});
+
+test('例句用已教过的词不报警', () => {
+  const packs = [{ id: 'p', title: 'P', words: [{ word: 'tulus', example: 'Dia menolong saya dengan tulus.' }] }];
+  assert.deepEqual(checkExampleVocabulary(packs, ['tolong']), []);
+});
+
+test('例句用没教过的词要报出来', () => {
+  const packs = [{ id: 'p', title: 'P', words: [{ word: 'tulus', example: 'Dia tulus dan berjualan bakso.' }] }];
+  const out = checkExampleVocabulary(packs, []);
+  assert.equal(out.length, 1);
+  assert.match(out[0], /bakso/);
+});
+
+test('短语词条按词收录，例句用其中一个词不算生词', () => {
+  const packs = [{ id: 'p', title: 'P', words: [{ word: 'paruh baya', example: 'Ibu itu sudah paruh baya.' }] }];
+  assert.deepEqual(checkExampleVocabulary(packs, []), []);
+});

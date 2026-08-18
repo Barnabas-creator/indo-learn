@@ -8,10 +8,12 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
+import { loadPacks } from './load-packs.mjs';
+
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const out = process.argv[2] ?? join(root, '印尼语词库审校.html');
 
-const packs = JSON.parse(readFileSync(join(root, 'content-src/packs.json'), 'utf8'));
+const packs = loadPacks();
 const dialogs = JSON.parse(readFileSync(join(root, 'content-src/dialogs.json'), 'utf8'));
 
 // 压缩成数组形式，减小内联体积

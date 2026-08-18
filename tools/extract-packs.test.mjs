@@ -16,20 +16,26 @@ const SAMPLE = `
   ],
 `;
 
-test('只提取初级包', () => {
+test('默认提取全部三级', () => {
   const out = parsePackSkeleton(SAMPLE);
-  assert.equal(out.length, 2);
-  assert.ok(out.every((p) => p.id.startsWith('freq-beginner-')));
+  assert.equal(out.length, 3);
+  assert.deepEqual(out.map((p) => p.level), ['beginner', 'beginner', 'intermediate']);
 });
 
-test('按 stage 升序排列', () => {
-  const out = parsePackSkeleton(SAMPLE);
+test('给了 level 只提取那一级', () => {
+  const out = parsePackSkeleton(SAMPLE, 'intermediate');
+  assert.equal(out.length, 1);
+  assert.equal(out[0].id, 'freq-inter-001');
+});
+
+test('同级内按 stage 升序排列', () => {
+  const out = parsePackSkeleton(SAMPLE, 'beginner');
   assert.deepEqual(out.map((p) => p.stage), [1, 2]);
   assert.equal(out[0].title, '数字');
   assert.equal(out[0].subtitle, '1到10');
 });
 
 test('保留 theme 字段', () => {
-  const out = parsePackSkeleton(SAMPLE);
-  assert.equal(out[0].theme, 'blue');
+  const out = parsePackSkeleton(SAMPLE)[0];
+  assert.equal(out.theme, 'blue');
 });

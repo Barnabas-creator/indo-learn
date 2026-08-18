@@ -70,7 +70,7 @@ if (isMain) {
     JSON.parse(readFileSync(join(root, 'content-src', f), 'utf8'));
   const bundle = await buildBundle(
     {
-      packs: read('packs.json'),
+      packs: read('words.json'),
       dialogs: read('dialogs.json'),
       grammar: read('grammar.json'),
     },

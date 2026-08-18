@@ -7,10 +7,10 @@
 
 | 模块 | 内容 |
 |---|---|
-| 单词包 | 100 个主题包 × 10 词 = 1000 词条（词 + 词性 + 中文释义 + 例句 + 例句翻译） |
+| 单词包 | 初级 100 包 + 中级 10 包（共 1100 词条：词 + 词性 + 中文释义 + 例句 + 例句翻译）；中级其余 90 包与高级 60 包只有主题骨架 |
 | 场景对话 | 10 组（打招呼 / 买东西 / 点餐 / 问路 / 看病 / 坐车 / 租房 / 银行 / 学校 / 教会），每组 10 轮 + 关键句 + 生词 |
 | 语法学习 | 8 个模块 / 61 课 / 217 条词缀条目（meN- / ber- / ter- / peN- / di- 体系） |
-| 配图 | 400 个 OpenMoji SVG，词条专属配图覆盖 854/1000（85%），其余走主题图 |
+| 配图 | 436 个 OpenMoji SVG，词条专属配图覆盖 940/1100（85%），其余走主题图 |
 
 ## 打包内容
 
@@ -78,13 +78,20 @@ python3 -m http.server 8123
 node --test tools/*.test.mjs
 ```
 
+## 内容如何逐步开放
+
+骨架（`lib/catalog.js`，明文）与词条（加密包，`{ 包id: [词条…] }`）分开存放。
+某个包有没有词条，决定它在 UI 上是可点还是灰显「准备中」——
+补一批词只需重打加密包，代码不用改。
+
 ## 重新生成内容
 
 ```bash
-node tools/extract-packs.mjs                       # 从 reference/ 提取 100 个包骨架
+node tools/extract-packs.mjs                       # reference/packs.js -> content-src/skeleton.json（三级 260 包）
+node tools/build-catalog.mjs                       # 骨架 -> lib/catalog.js（明文，App 直接 import）
 node tools/extract-grammar.mjs                     # 提取语法课程 + SVG 插图
-node tools/merge-batches.mjs                       # 合并 content-src/batches/*.json 成 packs.json
-node tools/check-content.mjs                       # 校验词库与对话（--partial 只校验已填词的包）
+node tools/merge-batches.mjs                       # batches/*.json -> content-src/words.json（按包 id 索引）
+node tools/check-content.mjs                       # 校验词库与对话，并列出例句里的生词
 node tools/fetch-openmoji.mjs                      # 按映射表拉取用到的 OpenMoji SVG
 node tools/pack-content.mjs --password '密码' --version v1
 ```
@@ -94,6 +101,7 @@ node tools/pack-content.mjs --password '密码' --version v1
 | 路径 | 说明 |
 |---|---|
 | `index.html` / `app.js` / `styles.css` | 外壳与路由 |
+| `lib/catalog.js` | 三级主题骨架（生成物，勿手改）。哪个包已开放看有没有词条 |
 | `lib/crypto.js` | AES-GCM / PBKDF2，浏览器与 Node 共用 |
 | `lib/provider.js` | 内容访问接口、解锁凭据管理（有效期 30 天） |
 | `lib/tts.js` | Web Speech `id-ID` 封装 |

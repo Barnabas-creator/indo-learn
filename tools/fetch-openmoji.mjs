@@ -9,13 +9,13 @@ import { codepointsInUse, coverage } from '../lib/icons.js';
 
 const CDN = 'https://cdn.jsdelivr.net/npm/openmoji@17.0.0/color/svg';
 
+import { loadPacks } from './load-packs.mjs';
+
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = join(root, 'assets/openmoji');
 mkdirSync(outDir, { recursive: true });
 
-const packs = JSON.parse(
-  readFileSync(join(root, 'content-src/packs.json'), 'utf8'),
-);
+const packs = loadPacks();
 const cps = codepointsInUse(packs);
 
 let downloaded = 0;

@@ -1,27 +1,29 @@
-// 从小程序解包所得的 packs.js 中提取初级 100 个单词包的骨架。
+// 从小程序解包所得的 packs.js 中提取三级单词包骨架（词条本身不在解包里）。
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const FIELD = String.raw`id: "([^"]+)",\s*title: "([^"]+)",\s*subtitle: "([^"]*)",\s*total: (\d+),\s*added: \d+,\s*icon: "[^"]*",\s*theme: "([^"]*)",\s*category: "[^"]*",\s*level: "([^"]*)",\s*stage: (\d+)`;
 
-export function parsePackSkeleton(source) {
+// level 省略时提取全部三级；给了就只要那一级。同级内按 stage 升序。
+export function parsePackSkeleton(source, level) {
   const re = new RegExp(FIELD, 'g');
   const out = [];
   for (const m of source.matchAll(re)) {
-    const [, id, title, subtitle, total, theme, level, stage] = m;
-    if (level !== 'beginner') continue;
+    const [, id, title, subtitle, total, theme, lv, stage] = m;
+    if (level && lv !== level) continue;
     out.push({
       id,
+      level: lv,
       title,
       subtitle,
       theme,
       stage: Number(stage),
       total: Number(total),
-      words: [],
     });
   }
-  out.sort((a, b) => a.stage - b.stage);
+  const order = { beginner: 0, intermediate: 1, advanced: 2 };
+  out.sort((a, b) => (order[a.level] ?? 9) - (order[b.level] ?? 9) || a.stage - b.stage);
   return out;
 }
 
@@ -32,8 +34,15 @@ if (isMain) {
   const packs = parsePackSkeleton(src);
   mkdirSync(join(root, 'content-src'), { recursive: true });
   writeFileSync(
-    join(root, 'content-src/pack-skeleton.json'),
+    join(root, 'content-src/skeleton.json'),
     JSON.stringify(packs, null, 2),
   );
-  console.log(`提取 ${packs.length} 个初级包 -> content-src/pack-skeleton.json`);
+  const byLevel = packs.reduce((acc, p) => {
+    acc[p.level] = (acc[p.level] ?? 0) + 1;
+    return acc;
+  }, {});
+  console.log(
+    `提取 ${packs.length} 个包 -> content-src/skeleton.json（`
+    + Object.entries(byLevel).map(([k, v]) => `${k} ${v}`).join(' / ') + '）',
+  );
 }

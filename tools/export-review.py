@@ -180,7 +180,9 @@ def sheet_readme(wb, counts):
 
 
 def main():
-    packs = json.loads((ROOT / "content-src/packs.json").read_text(encoding="utf-8"))
+    skeleton = json.loads((ROOT / "content-src/skeleton.json").read_text(encoding="utf-8"))
+    words = json.loads((ROOT / "content-src/words.json").read_text(encoding="utf-8"))
+    packs = [{**p, "words": words.get(p["id"], [])} for p in skeleton if words.get(p["id"])]
     dialogs = json.loads((ROOT / "content-src/dialogs.json").read_text(encoding="utf-8"))
 
     wb = Workbook()

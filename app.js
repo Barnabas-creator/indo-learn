@@ -5,15 +5,15 @@ import {
 import { renderDialogList, renderDialog } from './lib/views/dialogs.js';
 import { renderGrammarList, renderGrammarModule } from './lib/views/grammar.js';
 import { renderUnlock } from './lib/views/unlock.js';
-import { LEVELS, UPPER } from './lib/catalog.js';
+import { LEVELS, PACKS } from './lib/catalog.js';
 
 export function start(root, provider, tts) {
   // 导航状态。view 决定当前层，其余字段是该层参数。全程不落盘。
   let view = 'home';
   let level = null; // 'beginner' | 'intermediate' | 'advanced'
-  let packIndex = 0; // 包在该级序列中的位置
+  let packId = null; // 当前打开的包 id
   let detailId = null; // 对话/语法的详情 id
-  let beginnerPacks = null; // 初级词条，解锁后缓存在内存
+  let wordsByPack = {}; // 解锁后的词条表 { 包id: [词条…] }，只在内存
 
   function showUnlock(error = '', busy = false) {
     renderUnlock(root, {
@@ -23,7 +23,7 @@ export function start(root, provider, tts) {
         showUnlock('', true);
         try {
           await provider.unlock(password);
-          beginnerPacks = await provider.getPacks();
+          wordsByPack = await provider.getPacks();
           render();
         } catch (err) {
           showUnlock(err.message);
@@ -32,24 +32,33 @@ export function start(root, provider, tts) {
     });
   }
 
-  // 某一级的包序列：初级用真实词条，中高级用骨架
+  // 骨架来自 catalog（明文，含尚未开放的包），词条来自加密包
   function packsOfLevel(id) {
-    if (id === 'beginner') return beginnerPacks;
-    return UPPER[id].map((x) => ({ title: x.t, subtitle: x.u, words: [] }));
+    return PACKS[id].map((p) => ({ ...p, words: wordsByPack[p.id] ?? [] }));
+  }
+
+  // 已开放 = 有词条。「下一包」只在已开放的包之间走，跳过准备中的。
+  function openPacksOfLevel(id) {
+    return packsOfLevel(id).filter((p) => p.words.length);
   }
 
   function levelCounts() {
-    return {
-      beginner: beginnerPacks ? beginnerPacks.length : 0,
-      intermediate: UPPER.intermediate.length,
-      advanced: UPPER.advanced.length,
-    };
+    return Object.fromEntries(
+      LEVELS.map((l) => {
+        const packs = packsOfLevel(l.id);
+        return [
+          l.id,
+          { open: packs.filter((p) => p.words.length).length, total: packs.length },
+        ];
+      }),
+    );
   }
 
   // 内容是异步取的，取不到就给一句错误 + 回首页，别留白屏。
   function guard(promise, fn) {
     return promise.then(fn).catch((err) => {
-      root.innerHTML = `<div class="stack"><div class="crumb"><button class="back">← 返回</button></div>`
+      root.innerHTML = '<div class="stack"><div class="crumb">'
+        + '<button class="back">← 返回</button></div>'
         + `<p class="error">内容加载失败：${err.message || '请检查网络后重试'}</p></div>`;
       root.querySelector('.back').addEventListener('click', () => { view = 'home'; render(); });
     });
@@ -89,22 +98,22 @@ export function start(root, provider, tts) {
 
     if (view === 'grid') {
       const meta = LEVELS.find((l) => l.id === level);
+      const packs = packsOfLevel(level);
       return mount((m) =>
         renderPackGrid(m, {
           levelTitle: meta.title,
-          packs: packsOfLevel(level),
-          ready: meta.ready,
+          packs,
           back: () => { view = 'levels'; render(); },
-          open: (i) => { packIndex = i; view = 'cards'; render(); },
+          open: (i) => { packId = packs[i].id; view = 'cards'; render(); },
         }),
       );
     }
 
     if (view === 'cards') {
-      const packs = packsOfLevel(level);
+      const pack = packsOfLevel(level).find((p) => p.id === packId);
       return mount((m) =>
         renderPack(m, {
-          pack: packs[packIndex],
+          pack,
           tts,
           back: () => { view = 'grid'; render(); },
           onComplete: () => { view = 'congrats'; render(); },
@@ -113,21 +122,25 @@ export function start(root, provider, tts) {
     }
 
     if (view === 'congrats') {
-      const packs = packsOfLevel(level);
-      const isLast = packIndex >= packs.length - 1;
-      const order = ['beginner', 'intermediate', 'advanced'];
+      const opened = openPacksOfLevel(level);
+      const at = opened.findIndex((p) => p.id === packId);
+      const isLast = at >= opened.length - 1;
+      const order = LEVELS.map((l) => l.id);
       const nextLevel = order[order.indexOf(level) + 1];
-      const nextLabel = isLast
-        ? (nextLevel ? '进入' + LEVELS.find((l) => l.id === nextLevel).title : '回到分级')
-        : '下一包';
+      const nextHasPacks = Boolean(nextLevel) && openPacksOfLevel(nextLevel).length > 0;
+      const nextLabel = !isLast
+        ? '下一包'
+        : nextHasPacks
+          ? '进入' + LEVELS.find((l) => l.id === nextLevel).title
+          : '回到分级';
       return mount((m) =>
         renderCongrats(m, {
-          pack: packs[packIndex],
+          pack: opened[at],
           nextLabel,
           back: () => { view = 'grid'; render(); },
           next: () => {
-            if (!isLast) { packIndex += 1; view = 'cards'; }
-            else if (nextLevel) { level = nextLevel; view = 'grid'; }
+            if (!isLast) { packId = opened[at + 1].id; view = 'cards'; }
+            else if (nextHasPacks) { level = nextLevel; view = 'grid'; }
             else { view = 'levels'; }
             render();
           },
@@ -185,7 +198,7 @@ export function start(root, provider, tts) {
       const { unlocked } = await provider.init();
       if (!unlocked) return showUnlock();
       try {
-        beginnerPacks = await provider.getPacks();
+        wordsByPack = await provider.getPacks();
       } catch {
         // 存下来的凭据能解开这一版内容，是没法只靠版本号断定的：
         // 解不开就丢掉凭据回解锁页，别把用户堵在死页面上。
