@@ -3,7 +3,7 @@
 // 用着旧的加密包和旧的 keys，换了密码也没有感觉。
 // data/<version>/*.enc 的 URL 带版本号，内容不可变，cache-first 安全。
 
-const CACHE = 'indo-learn-v5';
+const CACHE = 'indo-learn-v6';
 
 const SHELL = [
   './',
