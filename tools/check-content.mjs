@@ -5,6 +5,38 @@ import { dirname, join } from 'node:path';
 
 const REQUIRED = ['id', 'word', 'pos', 'zh', 'example', 'exampleZh'];
 
+// meN- / peN- 前缀会吃掉词根首字母：men+tolong -> menolong，meng+kirim -> mengirim。
+// 还原时把这些字母补回去，否则派生词会被误判成生词。
+const NASAL = { men: 't', meng: 'k', mem: 'p', meny: 's', pen: 't', peng: 'k', pem: 'p', peny: 's' };
+const PREFIXES = ['memper', 'menge', 'meng', 'meny', 'mem', 'men', 'me', 'peng', 'peny', 'pem', 'pen', 'pe', 'ber', 'bel', 'ter', 'di', 'ke', 'se'];
+const SUFFIXES = ['kannya', 'annya', 'nya', 'kan', 'an', 'i'];
+
+// 一个词可能的词根，含前缀鼻音还原后的形式。
+export function stemCandidates(token) {
+  const out = new Set([token]);
+  for (const p of PREFIXES) {
+    if (!token.startsWith(p) || token.length - p.length < 3) continue;
+    const rest = token.slice(p.length);
+    out.add(rest);
+    if (NASAL[p]) out.add(NASAL[p] + rest);
+  }
+  for (const base of [...out]) {
+    for (const sfx of SUFFIXES) {
+      if (base.endsWith(sfx) && base.length - sfx.length >= 3) out.add(base.slice(0, -sfx.length));
+    }
+  }
+  return [...out];
+}
+
+// 例句是否用到了该词条：短语逐词匹配，单词按词根匹配（含 meN- 前缀还原）。
+export function exampleUsesWord(example, word) {
+  const tokens = String(example).toLowerCase().match(/[a-z]+/g) ?? [];
+  const parts = String(word).toLowerCase().match(/[a-z]+/g) ?? [];
+  if (!parts.length) return false;
+  const roots = new Set(tokens.flatMap((t) => stemCandidates(t)));
+  return parts.every((part) => stemCandidates(part).some((r) => roots.has(r)));
+}
+
 export function validatePacks(packs) {
   const problems = [];
   const seenPackIds = new Set();
@@ -32,10 +64,8 @@ export function validatePacks(packs) {
       seenWords.add(key);
 
       if (w?.word && w?.example) {
-        const stem = String(w.word)
-          .toLowerCase()
-          .slice(0, Math.max(3, w.word.length - 2));
-        if (!String(w.example).toLowerCase().includes(stem)) {
+        // 祈使句会脱掉前缀（merendam -> Rendam beras…），按词根比对才不会误判
+        if (!exampleUsesWord(w.example, w.word)) {
           problems.push(
             `包 ${pack.id} 的词 ${w.word} 例句未包含该词：${w.example}`,
           );
@@ -87,29 +117,6 @@ const STOPWORDS = new Set([
   'dapat', 'kabar', 'kunci', 'harga', 'uang', 'rumah', 'kerja', 'sekolah',
   'kelas', 'guru', 'anak', 'ibu', 'ayah', 'teman', 'kantor', 'kota', 'jalan',
 ]);
-
-// meN- / peN- 前缀会吃掉词根首字母：men+tolong -> menolong，meng+kirim -> mengirim。
-// 还原时把这些字母补回去，否则派生词会被误判成生词。
-const NASAL = { men: 't', meng: 'k', mem: 'p', meny: 's', pen: 't', peng: 'k', pem: 'p', peny: 's' };
-const PREFIXES = ['memper', 'menge', 'meng', 'meny', 'mem', 'men', 'me', 'peng', 'peny', 'pem', 'pen', 'pe', 'ber', 'bel', 'ter', 'di', 'ke', 'se'];
-const SUFFIXES = ['kannya', 'annya', 'nya', 'kan', 'an', 'i'];
-
-// 一个词可能的词根，含前缀鼻音还原后的形式。
-export function stemCandidates(token) {
-  const out = new Set([token]);
-  for (const p of PREFIXES) {
-    if (!token.startsWith(p) || token.length - p.length < 3) continue;
-    const rest = token.slice(p.length);
-    out.add(rest);
-    if (NASAL[p]) out.add(NASAL[p] + rest);
-  }
-  for (const base of [...out]) {
-    for (const sfx of SUFFIXES) {
-      if (base.endsWith(sfx) && base.length - sfx.length >= 3) out.add(base.slice(0, -sfx.length));
-    }
-  }
-  return [...out];
-}
 
 // 例句只该用「已教过的词 + 本包新词」。越界不阻断打包，只列出来供人工过一眼。
 export function checkExampleVocabulary(packs, knownWords = []) {

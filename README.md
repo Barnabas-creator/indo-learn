@@ -7,10 +7,10 @@
 
 | 模块 | 内容 |
 |---|---|
-| 单词包 | 初级 100 包 + 中级 10 包（共 1100 词条：词 + 词性 + 中文释义 + 例句 + 例句翻译）；中级其余 90 包与高级 60 包只有主题骨架 |
+| 单词包 | 初级 102 包 + 中级 100 包 = 2020 词条（词 + 词性 + 中文释义 + 例句 + 例句翻译）；高级 60 包只有主题骨架 |
 | 场景对话 | 10 组（打招呼 / 买东西 / 点餐 / 问路 / 看病 / 坐车 / 租房 / 银行 / 学校 / 教会），每组 10 轮 + 关键句 + 生词 |
 | 语法学习 | 8 个模块 / 61 课 / 217 条词缀条目（meN- / ber- / ter- / peN- / di- 体系） |
-| 配图 | 436 个 OpenMoji SVG，词条专属配图覆盖 940/1100（85%），其余走主题图 |
+| 配图 | 452 个 OpenMoji SVG，词条专属配图覆盖 940/2020（47%），其余走主题图（65 个主题各有专属图）|
 
 ## 打包内容
 
@@ -78,6 +78,12 @@ python3 -m http.server 8123
 node --test tools/*.test.mjs
 ```
 
+## 初级词表的补充包
+
+小程序原本的 100 个初级包漏掉了一批核心词（membuat / butuh / lewat / hilang…）。
+补的包写在 `content-src/extra-packs.json`（`extra-beginner-*`），
+`extract-packs.mjs` 会把它们并进骨架，不动原有 100 包。
+
 ## 内容如何逐步开放
 
 骨架（`lib/catalog.js`，明文）与词条（加密包，`{ 包id: [词条…] }`）分开存放。
@@ -87,7 +93,7 @@ node --test tools/*.test.mjs
 ## 重新生成内容
 
 ```bash
-node tools/extract-packs.mjs                       # reference/packs.js -> content-src/skeleton.json（三级 260 包）
+node tools/extract-packs.mjs                       # reference/packs.js + extra-packs.json -> skeleton.json
 node tools/build-catalog.mjs                       # 骨架 -> lib/catalog.js（明文，App 直接 import）
 node tools/extract-grammar.mjs                     # 提取语法课程 + SVG 插图
 node tools/merge-batches.mjs                       # batches/*.json -> content-src/words.json（按包 id 索引）

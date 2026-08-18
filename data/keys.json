@@ -1,11 +1,11 @@
 {
-  "version": "v3",
+  "version": "v4",
   "kdf": {
     "name": "PBKDF2",
     "hash": "SHA-256",
-    "salt": "rxe32HmhrnYeqh431Bweiw==",
+    "salt": "7ZNgGnto5ZeWS6rHsWdqGw==",
     "iterations": 250000
   },
-  "iv": "I1Q8SHKpZ30DfAcj",
-  "wrapped": "59VL1nANp/xfjjRXkX6Wlwtqiym3K37FONygMYMj557G9jNvn1c6eFirBdmT2UkT"
+  "iv": "2t4FYyJd1YFCBEmh",
+  "wrapped": "tAyXa1ESUghNCIvuz/nqIDmvGeitR8EE/RYr+ceUOOKmP9NfNMyKSTDpCKE3qDzg"
 }

@@ -144,3 +144,31 @@ test('短语词条按词收录，例句用其中一个词不算生词', () => {
   const packs = [{ id: 'p', title: 'P', words: [{ word: 'paruh baya', example: 'Ibu itu sudah paruh baya.' }] }];
   assert.deepEqual(checkExampleVocabulary(packs, []), []);
 });
+
+test('祈使句脱掉前缀也算例句用了该词', () => {
+  const packs = [{
+    id: 'p', title: 'P',
+    words: Array.from({ length: 10 }, (_, i) => ({
+      id: `p-${i + 1}`, word: 'merendam', pos: '动词', zh: '浸泡',
+      example: 'Rendam beras ketan satu jam.', exampleZh: '糯米泡一个小时。',
+    })),
+  }];
+  const problems = validatePacks(packs).filter((x) => /例句未包含/.test(x));
+  assert.deepEqual(problems, []);
+});
+
+test('例句真没用到该词还是要报', () => {
+  const packs = [{
+    id: 'p', title: 'P',
+    words: [{ id: 'p-1', word: 'merendam', pos: '动词', zh: '浸泡', example: 'Saya makan nasi.', exampleZh: '我吃饭。' }],
+  }];
+  assert.ok(validatePacks(packs).some((x) => /例句未包含/.test(x)));
+});
+
+test('短语词条要求例句用到每一个词', () => {
+  const packs = [{
+    id: 'p', title: 'P',
+    words: [{ id: 'p-1', word: 'uang muka', pos: '名词', zh: '首付', example: 'Uang muka motor itu besar.', exampleZh: '那辆摩托首付很高。' }],
+  }];
+  assert.deepEqual(validatePacks(packs).filter((x) => /例句未包含/.test(x)), []);
+});

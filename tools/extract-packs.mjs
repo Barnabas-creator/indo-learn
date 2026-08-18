@@ -27,11 +27,26 @@ export function parsePackSkeleton(source, level) {
   return out;
 }
 
+// 自定义包按 level + stage 插进骨架，排序规则与解包骨架一致。
+export function mergeExtra(skeleton, extra = []) {
+  const order = { beginner: 0, intermediate: 1, advanced: 2 };
+  return [...skeleton, ...extra].sort(
+    (a, b) => (order[a.level] ?? 9) - (order[b.level] ?? 9) || a.stage - b.stage,
+  );
+}
+
 const isMain = process.argv[1] === fileURLToPath(import.meta.url);
 if (isMain) {
   const root = join(dirname(fileURLToPath(import.meta.url)), '..');
   const src = readFileSync(join(root, 'reference/packs.js'), 'utf8');
-  const packs = parsePackSkeleton(src);
+  // 小程序骨架之外，自己补的包写在 content-src/extra-packs.json（初级词表的洞就靠它补）
+  let extra = [];
+  try {
+    extra = JSON.parse(readFileSync(join(root, 'content-src/extra-packs.json'), 'utf8'));
+  } catch {
+    extra = [];
+  }
+  const packs = mergeExtra(parsePackSkeleton(src), extra);
   mkdirSync(join(root, 'content-src'), { recursive: true });
   writeFileSync(
     join(root, 'content-src/skeleton.json'),
