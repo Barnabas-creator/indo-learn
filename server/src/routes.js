@@ -9,6 +9,10 @@ import {
 
 export const RATE_LIMIT = 10;
 export const RATE_WINDOW_MS = 60000;
+// /register 没有会话保护，Worker 地址又是公开的：CORS 挡不住 curl，
+// 限流必须比登录严得多，否则谁都能自助批量开号、刷爆 D1 免费写配额。
+export const REGISTER_RATE_LIMIT = 3;
+export const REGISTER_RATE_WINDOW_MS = 3600000; // 1 小时
 const MIN_PASSWORD = 8;
 
 export function json(data, status = 200) {
@@ -22,10 +26,10 @@ function clientIp(request) {
   return request.headers.get('cf-connecting-ip') ?? 'unknown';
 }
 
-async function overLimit(env, request, endpoint, now) {
+async function overLimit(env, request, endpoint, now, { limit = RATE_LIMIT, windowMs = RATE_WINDOW_MS } = {}) {
   const ip = clientIp(request);
-  const n = await countAttempts(env.DB, { ip, endpoint, since: now - RATE_WINDOW_MS });
-  if (n >= RATE_LIMIT) return true;
+  const n = await countAttempts(env.DB, { ip, endpoint, since: now - windowMs });
+  if (n >= limit) return true;
   await recordAttempt(env.DB, { ip, endpoint, now });
   return false;
 }
@@ -39,6 +43,11 @@ async function readJson(request) {
 }
 
 export async function handleRegister(request, env, now = Date.now()) {
+  if (await overLimit(env, request, '/register', now, {
+    limit: REGISTER_RATE_LIMIT, windowMs: REGISTER_RATE_WINDOW_MS,
+  })) {
+    return json({ error: 'too_many_attempts' }, 429);
+  }
   const { email, password } = await readJson(request);
   const mail = String(email ?? '').trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail)) return json({ error: 'invalid_email' }, 400);
@@ -48,10 +57,14 @@ export async function handleRegister(request, env, now = Date.now()) {
   const { hash, salt } = await hashPassword(password);
   const accountId = await createAccount(env.DB, { email: mail, hash, salt, now });
 
-  const code = generateCode();
-  await insertCode(env.DB, { codeHash: await hashCode(code), accountId: null, now });
-
-  if (env.AUTO_ISSUE_CODE === 'true') return json({ ok: true, accountId, code });
+  // 自动发码模式：生成一张码、直接下发给用户。
+  // 关掉自动发码时不再顺手生成一张——那张码的明文谁都拿不到（只存了哈希），
+  // 纯属占用一行数据库记录，码要靠 tools/issue-code.mjs 预先批量生成再手动发放。
+  if (env.AUTO_ISSUE_CODE === 'true') {
+    const code = generateCode();
+    await insertCode(env.DB, { codeHash: await hashCode(code), accountId: null, now });
+    return json({ ok: true, accountId, code });
+  }
   return json({ ok: true, accountId });
 }
 

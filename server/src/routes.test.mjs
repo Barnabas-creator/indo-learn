@@ -141,6 +141,36 @@ test('同一 IP 一分钟内登录超过 10 次被限流', async () => {
   assert.equal((await res.json()).error, 'too_many_attempts');
 });
 
+test('同一 IP 一小时内注册超过 3 次被限流（比登录更严）', async () => {
+  const e = env();
+  for (let i = 0; i < 3; i++) {
+    await handleRegister(req({ email: `u${i}@b.com`, password: 'rahasia123' }), e, 1000);
+  }
+  const res = await handleRegister(req({ email: 'u3@b.com', password: 'rahasia123' }), e, 1000);
+  assert.equal(res.status, 429);
+  assert.equal((await res.json()).error, 'too_many_attempts');
+});
+
+test('disabled 账号登录被拒', async () => {
+  const e = env();
+  await handleRegister(req({ email: 'a@b.com', password: 'rahasia123' }), e);
+  e.DB.accounts[0].status = 'disabled';
+  const res = await handleLogin(req({ email: 'a@b.com', password: 'rahasia123' }), e);
+  assert.equal(res.status, 403);
+  assert.equal((await res.json()).error, 'account_disabled');
+});
+
+test('disabled 账号取内容密钥被拒', async () => {
+  const e = env();
+  const { code, token } = await registerAndLogin(e);
+  await handleActivate(authReq(token, { code }), e);
+  e.DB.accounts[0].status = 'disabled';
+  e.DB.contentKey = { version: 'v5', cek: 'KUNCI' };
+  const res = await handleContentKey(authReq(token), e);
+  assert.equal(res.status, 403);
+  assert.equal((await res.json()).error, 'account_disabled');
+});
+
 function authReq(token, body = {}) {
   return new Request('https://api.test/x', {
     method: 'POST',
