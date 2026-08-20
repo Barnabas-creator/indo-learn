@@ -364,6 +364,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
   letter-spacing: 1px; text-align: center; color: var(--ink);
   background: var(--moss-soft); border-radius: 12px; user-select: all;
 }
+.code-box.highlight { outline: 2px solid var(--clove); outline-offset: 2px; }
 .copy-code { width: 100%; }
 
 .attribution { padding: 20px 16px calc(20px + env(safe-area-inset-bottom)); font-size: 11px; color: var(--mute); text-align: center; }
