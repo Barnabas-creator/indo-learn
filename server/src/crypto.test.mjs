@@ -43,3 +43,9 @@ test('被改过的令牌无效', async () => {
   const tampered = token.slice(0, -2) + (token.endsWith('a') ? 'b' : 'a');
   assert.equal(await verifyToken(tampered, 'secret-kunci'), null);
 });
+
+test('多出第三段的令牌无效', async () => {
+  const token = await signToken(42, 'secret-kunci');
+  const extra = token + '.garbage';
+  assert.equal(await verifyToken(extra, 'secret-kunci'), null);
+});
