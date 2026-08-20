@@ -19,18 +19,36 @@
 </footer>
 
 <script type="module">
+  import { AUTH_MODE, API_BASE } from './lib/config.js';
   import { createProvider } from './lib/provider.js';
+  import { createRemoteProvider } from './lib/remote-provider.js';
   import { createTts } from './lib/tts.js';
   import { start } from './app.js';
 
-  const provider = createProvider({
-    fetchJson: async (path) => {
-      const res = await fetch(path, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`加载失败：${path}`);
-      return res.json();
-    },
-    storage: localStorage,
-  });
+  const fetchJson = async (path) => {
+    const res = await fetch(path, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`加载失败：${path}`);
+    return res.json();
+  };
+
+  // 接口调用：非 2xx 时把服务端错误码抛出来，视图层映射成中文
+  const apiFetch = async (path, { method = 'GET', token, body } = {}) => {
+    const res = await fetch(API_BASE + path, {
+      method,
+      headers: {
+        ...(body ? { 'content-type': 'application/json' } : {}),
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error ?? 'server_error');
+    return data;
+  };
+
+  const provider = AUTH_MODE === 'remote'
+    ? createRemoteProvider({ fetchJson, apiFetch, storage: localStorage })
+    : createProvider({ fetchJson, storage: localStorage });
 
   const tts = createTts({
     synth: window.speechSynthesis,

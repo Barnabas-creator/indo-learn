@@ -5,6 +5,8 @@ import {
 import { renderDialogList, renderDialog } from './lib/views/dialogs.js';
 import { renderGrammarList, renderGrammarModule } from './lib/views/grammar.js';
 import { renderUnlock } from './lib/views/unlock.js';
+import { renderLogin, renderRegister, renderCodeIssued, renderActivate, AUTH_ERRORS } from './lib/views/auth.js';
+import { AUTH_MODE } from './lib/config.js';
 import { LEVELS, PACKS } from './lib/catalog.js';
 
 export function start(root, provider, tts) {
@@ -27,6 +29,67 @@ export function start(root, provider, tts) {
           render();
         } catch (err) {
           showUnlock(err.message);
+        }
+      },
+    });
+  }
+
+  const msg = (err) => AUTH_ERRORS[err?.message] ?? AUTH_ERRORS.default;
+
+  function showLogin(error = '', busy = false) {
+    renderLogin(root, {
+      error,
+      busy,
+      onSwitch: () => showRegister(),
+      onSubmit: async (email, password) => {
+        showLogin('', true);
+        try {
+          const { status } = await provider.login(email, password);
+          if (status === 'active') {
+            wordsByPack = await provider.getPacks();
+            render();
+          } else {
+            showActivate();
+          }
+        } catch (err) {
+          showLogin(msg(err));
+        }
+      },
+    });
+  }
+
+  function showRegister(error = '', busy = false) {
+    renderRegister(root, {
+      error,
+      busy,
+      onSwitch: () => showLogin(),
+      onSubmit: async (email, password) => {
+        showRegister('', true);
+        try {
+          const out = await provider.register(email, password);
+          await provider.login(email, password);
+          if (out.code) renderCodeIssued(root, { code: out.code, onNext: () => showActivate() });
+          else showActivate();
+        } catch (err) {
+          showRegister(msg(err));
+        }
+      },
+    });
+  }
+
+  function showActivate(error = '', busy = false) {
+    renderActivate(root, {
+      error,
+      busy,
+      onLogout: () => { provider.lock(); showLogin(); },
+      onSubmit: async (code) => {
+        showActivate('', true);
+        try {
+          await provider.activate(code);
+          wordsByPack = await provider.getPacks();
+          render();
+        } catch (err) {
+          showActivate(msg(err));
         }
       },
     });
@@ -195,15 +258,18 @@ export function start(root, provider, tts) {
 
   (async () => {
     try {
-      const { unlocked } = await provider.init();
-      if (!unlocked) return showUnlock();
+      const { unlocked, status } = await provider.init();
+      if (!unlocked) {
+        if (AUTH_MODE !== 'remote') return showUnlock();
+        return status === 'pending' ? showActivate() : showLogin();
+      }
       try {
         wordsByPack = await provider.getPacks();
       } catch {
         // 存下来的凭据能解开这一版内容，是没法只靠版本号断定的：
         // 解不开就丢掉凭据回解锁页，别把用户堵在死页面上。
         provider.lock();
-        return showUnlock('内容已更新，请重新输入密码');
+        return AUTH_MODE === 'remote' ? showLogin() : showUnlock('内容已更新，请重新输入密码');
       }
       render();
     } catch (err) {
