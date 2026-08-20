@@ -5,9 +5,21 @@ export const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const CODE_LENGTH = 16;
 
 export function generateCode() {
-  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(CODE_LENGTH));
+  const threshold = Math.floor(256 / CODE_ALPHABET.length) * CODE_ALPHABET.length;
   let out = '';
-  for (const b of bytes) out += CODE_ALPHABET[b % CODE_ALPHABET.length];
+  let bytes = globalThis.crypto.getRandomValues(new Uint8Array(CODE_LENGTH));
+  let byteIdx = 0;
+
+  while (out.length < CODE_LENGTH) {
+    if (byteIdx >= bytes.length) {
+      bytes = globalThis.crypto.getRandomValues(new Uint8Array(CODE_LENGTH));
+      byteIdx = 0;
+    }
+    const b = bytes[byteIdx++];
+    if (b < threshold) {
+      out += CODE_ALPHABET[b % CODE_ALPHABET.length];
+    }
+  }
   return out.match(/.{4}/g).join('-');
 }
 

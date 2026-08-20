@@ -27,3 +27,16 @@ test('同一个码不同写法哈希相同', async () => {
 test('不同码哈希不同', async () => {
   assert.notEqual(await hashCode('ABCD-EFGH-JKMN-PQRS'), await hashCode('ABCD-EFGH-JKMN-PQRT'));
 });
+
+test('字符分布公平', () => {
+  const freq = {};
+  for (const ch of CODE_ALPHABET) freq[ch] = 0;
+  for (let i = 0; i < 10000; i++) {
+    const code = generateCode().replace(/-/g, '');
+    for (const ch of code) freq[ch]++;
+  }
+  const freqs = Object.values(freq);
+  const max = Math.max(...freqs);
+  const min = Math.min(...freqs);
+  assert.ok(max <= min * 1.15, `分布偏斜：max=${max} min=${min} ratio=${(max / min).toFixed(3)}`);
+});
