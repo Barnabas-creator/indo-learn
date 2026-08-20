@@ -353,6 +353,19 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .unlock-form button:disabled { opacity: .6; }
 .unlock-error { margin: 0; min-height: 20px; font-size: 14px; color: var(--clove); }
 
+/* 账号：注册 / 登录 / 激活 */
+.auth-form input { margin-bottom: 8px; }
+.link-btn {
+  margin-top: 12px; background: none; border: none; color: var(--moss);
+  font-size: 14px; text-decoration: underline; cursor: pointer;
+}
+.code-box {
+  margin: 16px 0; padding: 14px; font-family: var(--serif); font-size: 20px;
+  letter-spacing: 1px; text-align: center; color: var(--ink);
+  background: var(--moss-soft); border-radius: 12px; user-select: all;
+}
+.copy-code { width: 100%; }
+
 .attribution { padding: 20px 16px calc(20px + env(safe-area-inset-bottom)); font-size: 11px; color: var(--mute); text-align: center; }
 .attribution a { color: var(--mute); }
 
