@@ -2,7 +2,7 @@
 const subtle = globalThis.crypto.subtle;
 const enc = new TextEncoder();
 
-export const PBKDF2_ITERATIONS = 600000;
+export const PBKDF2_ITERATIONS = 100000;
 export const TOKEN_TTL_MS = 30 * 86400_000;
 
 function toB64(buf) {

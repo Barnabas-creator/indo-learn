@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  hashPassword, verifyPassword, signToken, verifyToken, TOKEN_TTL_MS,
+  hashPassword, verifyPassword, signToken, verifyToken, TOKEN_TTL_MS, PBKDF2_ITERATIONS,
 } from './crypto.js';
 
 test('同一密码配同一盐得到同一哈希', async () => {
@@ -48,4 +48,8 @@ test('多出第三段的令牌无效', async () => {
   const token = await signToken(42, 'secret-kunci');
   const extra = token + '.garbage';
   assert.equal(await verifyToken(extra, 'secret-kunci'), null);
+});
+
+test('PBKDF2 迭代次数不能超过 Cloudflare Workers 硬上限 100000（超过会在真机运行时抛 NotSupportedError）', () => {
+  assert.ok(PBKDF2_ITERATIONS <= 100000);
 });
