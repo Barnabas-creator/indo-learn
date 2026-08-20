@@ -65,6 +65,8 @@ test('查当前内容密钥只取 is_current = 1', async () => {
   const row = await currentContentKey(db);
   assert.equal(row.version, 'v5');
   assert.match(db.calls[0].sql, /is_current = 1/);
+  assert.match(db.calls[0].sql, /ORDER BY created_at DESC/);
+  assert.match(db.calls[0].sql, /LIMIT 1/);
 });
 
 test('限流计数按 ip、接口与时间窗', async () => {

@@ -1,5 +1,7 @@
 // 把当前内容密钥（CEK）灌进 D1，远程模式下服务器要直接持有它。
 // 用法：node tools/push-content-key.mjs --password "$(cat ~/.indo-pass)"
+// 注意：明文 CEK 会经由 wrangler 子进程的命令行参数传递，同机其他进程能在 ps 里看到，
+// 所以这个脚本只应在个人开发机上手动跑，不要放进 CI 或共享机器。
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -8,11 +10,13 @@ import { deriveKek, unwrapCek, exportCek } from '../lib/crypto.js';
 
 const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
 
+// 先插入新行再把旧行置为非当前：中途失败最坏是「两行都当前」，
+// 而不是 UPDATE 先跑会导致的「一行都没有」（D1 的 --command 不支持事务）。
 export function buildInsertSql({ version, cek }) {
   return [
-    'UPDATE content_keys SET is_current = 0;',
-    `INSERT OR REPLACE INTO content_keys (version, cek, is_current, created_at)`,
+    'INSERT OR REPLACE INTO content_keys (version, cek, is_current, created_at)',
     `VALUES (${q(version)}, ${q(cek)}, 1, ${Date.now()});`,
+    `UPDATE content_keys SET is_current = 0 WHERE version != ${q(version)};`,
   ].join(' ');
 }
 

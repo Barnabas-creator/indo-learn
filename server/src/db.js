@@ -44,7 +44,9 @@ export async function bindCode(db, { codeHash, accountId, now }) {
 }
 
 export function currentContentKey(db) {
-  return db.prepare('SELECT version, cek FROM content_keys WHERE is_current = 1').first();
+  return db
+    .prepare('SELECT version, cek FROM content_keys WHERE is_current = 1 ORDER BY created_at DESC LIMIT 1')
+    .first();
 }
 
 export async function countAttempts(db, { ip, endpoint, since }) {
