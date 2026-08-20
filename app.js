@@ -294,6 +294,36 @@ export function start(root, provider, tts) {
     }
   }
 
+  // 只有「确认解不开」或「服务器明确拒绝」才清凭据：
+  // - content_decrypt_failed：真解不开这一版内容（provider.js/remote-provider.js 在
+  //   decryptJson 失败时统一改抛这个），密钥/密码已经对不上了，留着会话没意义。
+  // - '未解锁'：远程模式下 session 已经被清掉了（refreshKey 内部判定吊销/未激活时会
+  //   clear()），说明服务器已经明确拒绝过一次。
+  // 其余情况——fetch 失败（SW 缓存被回收、.enc 404、断网）、content_outdated（新版本
+  // 内容已发布但暂时联不上网刷新密钥）——都是网络类问题，离线可用是核心设计，
+  // 不能被一次瞬时失败就把用户踢回登录/解锁页。
+  const FATAL_CONTENT_ERRORS = new Set(['content_decrypt_failed', '未解锁']);
+
+  async function loadPacksAfterUnlock() {
+    try {
+      wordsByPack = await provider.getPacks();
+      render();
+    } catch (err) {
+      if (FATAL_CONTENT_ERRORS.has(err?.message)) {
+        provider.lock();
+        return AUTH_MODE === 'remote' ? showLogin() : showUnlock('内容已更新，请重新输入密码');
+      }
+      showContentRetry();
+    }
+  }
+
+  function showContentRetry() {
+    root.innerHTML = '<div class="stack">'
+      + '<p class="error">内容暂时读取失败，请检查网络后重试</p>'
+      + '<button class="retry">重试</button></div>';
+    root.querySelector('.retry').addEventListener('click', loadPacksAfterUnlock);
+  }
+
   (async () => {
     try {
       const { unlocked, status, email } = await provider.init();
@@ -302,15 +332,7 @@ export function start(root, provider, tts) {
         if (AUTH_MODE !== 'remote') return showUnlock();
         return status === 'pending' ? showActivate() : showLogin();
       }
-      try {
-        wordsByPack = await provider.getPacks();
-      } catch {
-        // 存下来的凭据能解开这一版内容，是没法只靠版本号断定的：
-        // 解不开就丢掉凭据回解锁页，别把用户堵在死页面上。
-        provider.lock();
-        return AUTH_MODE === 'remote' ? showLogin() : showUnlock('内容已更新，请重新输入密码');
-      }
-      render();
+      await loadPacksAfterUnlock();
     } catch (err) {
       root.innerHTML = `<p class="error">加载失败：${err.message || '内容读取出错'}</p>`;
     }
