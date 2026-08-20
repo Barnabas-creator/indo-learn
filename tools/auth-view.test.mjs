@@ -63,3 +63,39 @@ test('激活视图不传 code 时输入框为空、不显示激活码提示行',
   assert.match(root.innerHTML, /value=""/);
   assert.doesNotMatch(root.innerHTML, /你的激活码：/);
 });
+
+// 激活失败重渲染时 code/inputCode 是用户手输的内容，error 也不能假设一定
+// 来自 AUTH_ERRORS 固定表：两处都要转义，否则输入里带个引号/尖括号就是 self-XSS。
+const XSS_PAYLOAD = '"><script>x</script>';
+
+test('激活视图的 code（手输回填）被转义，不含未转义的 <script>', () => {
+  const root = fakeRoot();
+  renderActivate(root, { onSubmit() {}, onLogout() {}, code: XSS_PAYLOAD });
+  assert.doesNotMatch(root.innerHTML, /<script>x<\/script>/);
+  assert.match(root.innerHTML, /&lt;script&gt;/);
+});
+
+test('激活视图的 error 被转义，不含未转义的 <script>', () => {
+  const root = fakeRoot();
+  renderActivate(root, { onSubmit() {}, onLogout() {}, error: XSS_PAYLOAD });
+  assert.doesNotMatch(root.innerHTML, /<script>x<\/script>/);
+  assert.match(root.innerHTML, /&lt;script&gt;/);
+});
+
+test('登录视图的 error 被转义，不含未转义的 <script>', () => {
+  const root = fakeRoot();
+  renderLogin(root, { onSubmit() {}, onSwitch() {}, error: XSS_PAYLOAD });
+  assert.doesNotMatch(root.innerHTML, /<script>x<\/script>/);
+});
+
+test('注册视图的 error 被转义，不含未转义的 <script>', () => {
+  const root = fakeRoot();
+  renderRegister(root, { onSubmit() {}, onSwitch() {}, error: XSS_PAYLOAD });
+  assert.doesNotMatch(root.innerHTML, /<script>x<\/script>/);
+});
+
+test('激活码展示视图的 code 被转义，不含未转义的 <script>', () => {
+  const root = fakeRoot();
+  renderCodeIssued(root, { code: XSS_PAYLOAD, onNext() {} });
+  assert.doesNotMatch(root.innerHTML, /<script>x<\/script>/);
+});
