@@ -42,7 +42,7 @@ test('没登录时 init 返回未解锁', async () => {
   const p = createRemoteProvider({
     fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage: memStorage(),
   });
-  assert.deepEqual(await p.init(), { unlocked: false, status: 'none' });
+  assert.deepEqual(await p.init(), { unlocked: false, status: 'none', email: null });
 });
 
 test('注册把邮箱密码发到 /register 并返回激活码', async () => {
@@ -68,7 +68,38 @@ test('登录存下令牌，init 之后认得状态', async () => {
   const p2 = createRemoteProvider({
     fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
   });
-  assert.deepEqual(await p2.init(), { unlocked: false, status: 'pending' });
+  assert.deepEqual(await p2.init(), { unlocked: false, status: 'pending', email: 'a@b.com' });
+});
+
+// --- 以下为审查追加：暂存激活码要按邮箱校验，靠 init()/login() 记住的 email ---
+
+test('login 之后 init 返回的 email 与登录用的邮箱一致', async () => {
+  const storage = memStorage();
+  const api = fakeApi({ '/login': { token: 'T', status: 'pending' } });
+  const p = createRemoteProvider({
+    fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
+  });
+  await p.login('someone@example.com', 'rahasia123');
+  const p2 = createRemoteProvider({
+    fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
+  });
+  const { email } = await p2.init();
+  assert.equal(email, 'someone@example.com');
+});
+
+test('会话被清后 init 返回的 email 为 null', async () => {
+  const storage = memStorage();
+  const api = fakeApi({ '/login': { token: 'T', status: 'active' } });
+  const p = createRemoteProvider({
+    fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
+  });
+  await p.login('someone@example.com', 'rahasia123');
+  p.lock();
+  const p2 = createRemoteProvider({
+    fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
+  });
+  const { email } = await p2.init();
+  assert.equal(email, null);
 });
 
 test('激活成功后状态变 active 且拿到内容密钥', async () => {
@@ -97,7 +128,7 @@ test('令牌过期后 init 清掉会话', async () => {
   const p = createRemoteProvider({
     fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage, now: () => 999999,
   });
-  assert.deepEqual(await p.init(), { unlocked: false, status: 'none' });
+  assert.deepEqual(await p.init(), { unlocked: false, status: 'none', email: null });
   assert.equal(storage.getItem(REMOTE_STORAGE_KEY), null);
 });
 
@@ -111,7 +142,7 @@ test('离线时（接口抛错）用本地缓存的密钥继续可用', async ()
   const p = createRemoteProvider({
     fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
   });
-  assert.deepEqual(await p.init(), { unlocked: true, status: 'active' });
+  assert.deepEqual(await p.init(), { unlocked: true, status: 'active', email: null });
 });
 
 test('lock 清掉会话', async () => {
@@ -137,7 +168,7 @@ test('服务器返回 account_disabled 时，init 清掉会话', async () => {
   const p = createRemoteProvider({
     fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
   });
-  assert.deepEqual(await p.init(), { unlocked: false, status: 'none' });
+  assert.deepEqual(await p.init(), { unlocked: false, status: 'none', email: null });
   assert.equal(storage.getItem(REMOTE_STORAGE_KEY), null);
 });
 
@@ -151,7 +182,7 @@ test('服务器返回 unauthorized 时，init 清掉会话', async () => {
   const p = createRemoteProvider({
     fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
   });
-  assert.deepEqual(await p.init(), { unlocked: false, status: 'none' });
+  assert.deepEqual(await p.init(), { unlocked: false, status: 'none', email: null });
   assert.equal(storage.getItem(REMOTE_STORAGE_KEY), null);
 });
 
@@ -165,7 +196,7 @@ test('服务器返回 no_content_key（服务器自己的问题）时不清会�
   const p = createRemoteProvider({
     fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
   });
-  assert.deepEqual(await p.init(), { unlocked: true, status: 'active' });
+  assert.deepEqual(await p.init(), { unlocked: true, status: 'active', email: null });
   assert.ok(storage.getItem(REMOTE_STORAGE_KEY));
 });
 
@@ -179,7 +210,7 @@ test('网络异常（TypeError，fetch 自己的错误）时不清会话，仍�
   const p = createRemoteProvider({
     fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
   });
-  assert.deepEqual(await p.init(), { unlocked: true, status: 'active' });
+  assert.deepEqual(await p.init(), { unlocked: true, status: 'active', email: null });
   assert.ok(storage.getItem(REMOTE_STORAGE_KEY));
 });
 

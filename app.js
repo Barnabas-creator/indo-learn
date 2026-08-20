@@ -16,6 +16,7 @@ export function start(root, provider, tts) {
   let packId = null; // 当前打开的包 id
   let detailId = null; // 对话/语法的详情 id
   let wordsByPack = {}; // 解锁后的词条表 { 包id: [词条…] }，只在内存
+  let sessionEmail = null; // 当前登录邮箱，用来校验暂存激活码是不是同一个账号的
 
   function showUnlock(error = '', busy = false) {
     renderUnlock(root, {
@@ -59,6 +60,7 @@ export function start(root, provider, tts) {
         showLogin('', true);
         try {
           const { status } = await provider.login(email, password);
+          sessionEmail = email;
           if (status === 'active') {
             wordsByPack = await provider.getPacks();
             render();
@@ -87,6 +89,7 @@ export function start(root, provider, tts) {
           const afterCodeSeen = async () => {
             try {
               await provider.login(email, password);
+              sessionEmail = email;
               showActivate();
             } catch (err) {
               showLogin(msg(err));
@@ -101,22 +104,29 @@ export function start(root, provider, tts) {
     });
   }
 
-  function showActivate(error = '', busy = false) {
-    const pending = readPendingCode();
+  function showActivate(error = '', busy = false, inputCode = null) {
+    // 暂存码是跟邮箱绑定的：换了账号登录，不能把上一个账号的码带出来。
+    let pending = readPendingCode();
+    if (pending && pending.email !== sessionEmail) {
+      clearPendingCode(); // 无主的暂存记录，顺手清掉
+      pending = null;
+    }
+    // 用户刚手输的码优先级更高：失败重渲染不能把手输的值换回暂存码。
+    const code = inputCode ?? pending?.code ?? '';
     renderActivate(root, {
       error,
       busy,
-      code: pending?.code ?? '',
-      onLogout: () => { provider.lock(); showLogin(); },
-      onSubmit: async (code) => {
-        showActivate('', true);
+      code,
+      onLogout: () => { clearPendingCode(); sessionEmail = null; provider.lock(); showLogin(); },
+      onSubmit: async (typed) => {
+        showActivate('', true, typed);
         try {
-          await provider.activate(code);
+          await provider.activate(typed);
           clearPendingCode();
           wordsByPack = await provider.getPacks();
           render();
         } catch (err) {
-          showActivate(msg(err));
+          showActivate(msg(err), false, typed);
         }
       },
     });
@@ -285,7 +295,8 @@ export function start(root, provider, tts) {
 
   (async () => {
     try {
-      const { unlocked, status } = await provider.init();
+      const { unlocked, status, email } = await provider.init();
+      sessionEmail = email ?? null;
       if (!unlocked) {
         if (AUTH_MODE !== 'remote') return showUnlock();
         return status === 'pending' ? showActivate() : showLogin();
