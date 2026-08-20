@@ -70,3 +70,47 @@ export async function handleLogin(request, env, now = Date.now()) {
   const token = await signToken(account.id, env.SESSION_SECRET, now);
   return json({ token, status: account.status });
 }
+
+async function requireAccount(request, env, now) {
+  const auth = request.headers.get('authorization') ?? '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  const accountId = await verifyToken(token, env.SESSION_SECRET, now);
+  if (accountId === null) return null;
+  return findAccountById(env.DB, accountId);
+}
+
+export async function handleActivate(request, env, now = Date.now()) {
+  if (await overLimit(env, request, '/activate', now)) {
+    return json({ error: 'too_many_attempts' }, 429);
+  }
+  const account = await requireAccount(request, env, now);
+  if (!account) return json({ error: 'unauthorized' }, 401);
+  if (account.status === 'disabled') return json({ error: 'account_disabled' }, 403);
+
+  const { code } = await readJson(request);
+  const codeHash = await hashCode(String(code ?? ''));
+  const row = await findCode(env.DB, codeHash);
+  if (!row) return json({ error: 'bad_code' }, 400);
+  if (row.account_id !== null && row.account_id !== account.id) {
+    return json({ error: 'code_used' }, 409);
+  }
+
+  await bindCode(env.DB, { codeHash, accountId: account.id, now });
+  await setAccountStatus(env.DB, account.id, 'active');
+  return json({ ok: true, status: 'active' });
+}
+
+export async function handleContentKey(request, env, now = Date.now()) {
+  const account = await requireAccount(request, env, now);
+  if (!account) return json({ error: 'unauthorized' }, 401);
+  if (account.status === 'disabled') return json({ error: 'account_disabled' }, 403);
+  if (account.status !== 'active') return json({ error: 'not_activated' }, 403);
+
+  const key = await currentContentKey(env.DB);
+  if (!key) return json({ error: 'no_content_key' }, 503);
+  return json({
+    cek: key.cek,
+    contentVersion: key.version,
+    expiresAt: now + 30 * 86400_000,
+  });
+}
