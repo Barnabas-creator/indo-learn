@@ -36,6 +36,20 @@ export function start(root, provider, tts) {
 
   const msg = (err) => AUTH_ERRORS[err?.message] ?? AUTH_ERRORS.default;
 
+  // 注册成功但自动登录失败时，激活码不能跟着丢：单独存一份，
+  // 激活成功后才清掉，刷新页面/重开浏览器也能在激活页找回来。
+  const PENDING_CODE_KEY = 'indo-learn-pending-code';
+  const savePendingCode = (email, code) =>
+    localStorage.setItem(PENDING_CODE_KEY, JSON.stringify({ email, code }));
+  const readPendingCode = () => {
+    try {
+      return JSON.parse(localStorage.getItem(PENDING_CODE_KEY));
+    } catch {
+      return null;
+    }
+  };
+  const clearPendingCode = () => localStorage.removeItem(PENDING_CODE_KEY);
+
   function showLogin(error = '', busy = false) {
     renderLogin(root, {
       error,
@@ -67,9 +81,19 @@ export function start(root, provider, tts) {
         showRegister('', true);
         try {
           const out = await provider.register(email, password);
-          await provider.login(email, password);
-          if (out.code) renderCodeIssued(root, { code: out.code, onNext: () => showActivate() });
-          else showActivate();
+          // 先把码亮出来、存到本地，再去登录：账号和码在服务端已经生成好了，
+          // 后面 login() 哪怕失败也不能让用户连码都没看到就卡死。
+          if (out.code) savePendingCode(email, out.code);
+          const afterCodeSeen = async () => {
+            try {
+              await provider.login(email, password);
+              showActivate();
+            } catch (err) {
+              showLogin(msg(err));
+            }
+          };
+          if (out.code) renderCodeIssued(root, { code: out.code, onNext: afterCodeSeen });
+          else await afterCodeSeen();
         } catch (err) {
           showRegister(msg(err));
         }
@@ -78,14 +102,17 @@ export function start(root, provider, tts) {
   }
 
   function showActivate(error = '', busy = false) {
+    const pending = readPendingCode();
     renderActivate(root, {
       error,
       busy,
+      code: pending?.code ?? '',
       onLogout: () => { provider.lock(); showLogin(); },
       onSubmit: async (code) => {
         showActivate('', true);
         try {
           await provider.activate(code);
+          clearPendingCode();
           wordsByPack = await provider.getPacks();
           render();
         } catch (err) {

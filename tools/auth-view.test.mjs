@@ -49,3 +49,17 @@ test('激活码展示视图含激活码本身和复制按钮', () => {
   assert.match(root.innerHTML, /ABCD-EFGH-IJKL-MNOP/);
   assert.match(root.innerHTML, /class="copy-code"/);
 });
+
+test('激活视图传入 code 时输入框带默认值且页面显示该码', () => {
+  const root = fakeRoot();
+  renderActivate(root, { onSubmit() {}, onLogout() {}, code: 'WXYZ-1234-5678-90AB' });
+  assert.match(root.innerHTML, /value="WXYZ-1234-5678-90AB"/);
+  assert.match(root.innerHTML, /你的激活码：WXYZ-1234-5678-90AB/);
+});
+
+test('激活视图不传 code 时输入框为空、不显示激活码提示行', () => {
+  const root = fakeRoot();
+  renderActivate(root, { onSubmit() {}, onLogout() {} });
+  assert.match(root.innerHTML, /value=""/);
+  assert.doesNotMatch(root.innerHTML, /你的激活码：/);
+});
