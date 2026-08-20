@@ -7,6 +7,7 @@ import { renderGrammarList, renderGrammarModule } from './lib/views/grammar.js';
 import { renderUnlock } from './lib/views/unlock.js';
 import { renderLogin, renderRegister, renderCodeIssued, renderActivate, AUTH_ERRORS } from './lib/views/auth.js';
 import { AUTH_MODE } from './lib/config.js';
+import { normalizeEmail } from './lib/remote-provider.js';
 import { LEVELS, PACKS } from './lib/catalog.js';
 
 export function start(root, provider, tts) {
@@ -41,7 +42,7 @@ export function start(root, provider, tts) {
   // 激活成功后才清掉，刷新页面/重开浏览器也能在激活页找回来。
   const PENDING_CODE_KEY = 'indo-learn-pending-code';
   const savePendingCode = (email, code) =>
-    localStorage.setItem(PENDING_CODE_KEY, JSON.stringify({ email, code }));
+    localStorage.setItem(PENDING_CODE_KEY, JSON.stringify({ email: normalizeEmail(email), code }));
   const readPendingCode = () => {
     try {
       return JSON.parse(localStorage.getItem(PENDING_CODE_KEY));
@@ -60,7 +61,7 @@ export function start(root, provider, tts) {
         showLogin('', true);
         try {
           const { status } = await provider.login(email, password);
-          sessionEmail = email;
+          sessionEmail = normalizeEmail(email);
           if (status === 'active') {
             wordsByPack = await provider.getPacks();
             render();
@@ -89,7 +90,7 @@ export function start(root, provider, tts) {
           const afterCodeSeen = async () => {
             try {
               await provider.login(email, password);
-              sessionEmail = email;
+              sessionEmail = normalizeEmail(email);
               showActivate();
             } catch (err) {
               showLogin(msg(err));
@@ -296,7 +297,7 @@ export function start(root, provider, tts) {
   (async () => {
     try {
       const { unlocked, status, email } = await provider.init();
-      sessionEmail = email ?? null;
+      sessionEmail = email ? normalizeEmail(email) : null; // provider 已归一化，这里再做一次保险，防旧会话数据是原样存的
       if (!unlocked) {
         if (AUTH_MODE !== 'remote') return showUnlock();
         return status === 'pending' ? showActivate() : showLogin();

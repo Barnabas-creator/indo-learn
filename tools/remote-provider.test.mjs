@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRemoteProvider, REMOTE_STORAGE_KEY } from '../lib/remote-provider.js';
+import { createRemoteProvider, REMOTE_STORAGE_KEY, normalizeEmail } from '../lib/remote-provider.js';
 import { generateCek, exportCek, encryptJson } from '../lib/crypto.js';
 
 function memStorage() {
@@ -85,6 +85,25 @@ test('login 之后 init 返回的 email 与登录用的邮箱一致', async () =
   });
   const { email } = await p2.init();
   assert.equal(email, 'someone@example.com');
+});
+
+test('normalizeEmail 去首尾空格并转小写，跟服务端归一化规则一致', () => {
+  assert.equal(normalizeEmail('  Bob@Test.com '), 'bob@test.com');
+  assert.equal(normalizeEmail('a@b.com'), 'a@b.com');
+});
+
+test('登录邮箱带大小写和首尾空格，init 返回归一化后的邮箱', async () => {
+  const storage = memStorage();
+  const api = fakeApi({ '/login': { token: 'T', status: 'pending' } });
+  const p = createRemoteProvider({
+    fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
+  });
+  await p.login('  Bob@Test.com ', 'rahasia123');
+  const p2 = createRemoteProvider({
+    fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
+  });
+  const { email } = await p2.init();
+  assert.equal(email, 'bob@test.com');
 });
 
 test('会话被清后 init 返回的 email 为 null', async () => {
