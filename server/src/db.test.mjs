@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   createAccount, findAccountByEmail, setAccountStatus,
   insertCode, findCode, bindCode, currentContentKey,
-  countAttempts, recordAttempt,
+  countAttempts, recordAttempt, recordError,
 } from './db.js';
 
 // 假 D1：记录收到的 SQL 与参数，按预设结果返回
@@ -79,4 +79,13 @@ test('记一次尝试', async () => {
   await recordAttempt(db, { ip: '1.2.3.4', endpoint: '/login', now: 200 });
   assert.match(db.calls[0].sql, /INSERT INTO attempts/);
   assert.deepEqual(db.calls[0].args, ['1.2.3.4', '/login', 200]);
+});
+
+test('记一条错误日志', async () => {
+  const db = fakeDb();
+  await recordError(db, {
+    ts: 300, method: 'POST', path: '/register', name: 'TypeError', message: '坏了',
+  });
+  assert.match(db.calls[0].sql, /INSERT INTO error_log/);
+  assert.deepEqual(db.calls[0].args, [300, 'POST', '/register', 'TypeError', '坏了']);
 });

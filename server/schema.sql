@@ -28,3 +28,12 @@ CREATE TABLE IF NOT EXISTS attempts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_attempts ON attempts (ip, endpoint, ts);
+
+CREATE TABLE IF NOT EXISTS error_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts INTEGER NOT NULL,
+  method TEXT NOT NULL,
+  path TEXT NOT NULL,
+  name TEXT,
+  message TEXT
+);

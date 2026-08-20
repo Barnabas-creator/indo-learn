@@ -61,3 +61,12 @@ export async function recordAttempt(db, { ip, endpoint, now }) {
     .bind(ip, endpoint, now)
     .run();
 }
+
+export async function recordError(db, {
+  ts, method, path, name, message,
+}) {
+  await db
+    .prepare('INSERT INTO error_log (ts, method, path, name, message) VALUES (?, ?, ?, ?, ?)')
+    .bind(ts, method, path, name, message)
+    .run();
+}

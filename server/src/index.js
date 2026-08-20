@@ -1,5 +1,6 @@
 // 入口：路由分发、CORS、错误兜底。业务逻辑都在 routes.js。
 import { handleRegister, handleLogin, handleActivate, handleContentKey, json } from './routes.js';
+import { recordError } from './db.js';
 
 export function corsHeaders(env) {
   return {
@@ -23,7 +24,8 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
     const url = new URL(request.url);
-    const handler = ROUTES[`${request.method} ${url.pathname}`];
+    const path = url.pathname.replace(/\/+$/, '') || '/';
+    const handler = ROUTES[`${request.method} ${path}`];
 
     let res;
     if (!handler) {
@@ -33,6 +35,17 @@ export default {
         res = await handler(request, env);
       } catch (err) {
         console.error(err);
+        try {
+          await recordError(env.DB, {
+            ts: Date.now(),
+            method: request.method,
+            path,
+            name: err?.name,
+            message: err?.message,
+          });
+        } catch {
+          // 日志记不下去就算了，绝不能因为记日志而影响主流程
+        }
         res = json({ error: 'server_error' }, 500);
       }
     }
