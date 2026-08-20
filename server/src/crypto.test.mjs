@@ -50,6 +50,6 @@ test('多出第三段的令牌无效', async () => {
   assert.equal(await verifyToken(extra, 'secret-kunci'), null);
 });
 
-test('PBKDF2 迭代次数不能超过 Cloudflare Workers 硬上限 100000（超过会在真机运行时抛 NotSupportedError）', () => {
-  assert.ok(PBKDF2_ITERATIONS <= 100000);
+test('PBKDF2 迭代次数固定等于 Cloudflare Workers 硬上限 100000（改小会被本测试测出来，改大会在真机运行时抛 NotSupportedError）', () => {
+  assert.equal(PBKDF2_ITERATIONS, 100000);
 });
