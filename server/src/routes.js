@@ -86,6 +86,7 @@ export async function handleActivate(request, env, now = Date.now()) {
   const account = await requireAccount(request, env, now);
   if (!account) return json({ error: 'unauthorized' }, 401);
   if (account.status === 'disabled') return json({ error: 'account_disabled' }, 403);
+  if (account.status === 'active') return json({ ok: true, status: 'active' });
 
   const { code } = await readJson(request);
   const codeHash = await hashCode(String(code ?? ''));

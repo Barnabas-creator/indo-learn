@@ -212,3 +212,37 @@ test('已激活账号能取到内容密钥', async () => {
   assert.equal(body.contentVersion, 'v5');
   assert.ok(body.expiresAt > Date.now());
 });
+
+test('已激活账号重复用自己的码仍成功（幂等）', async () => {
+  const e = env();
+  const { code, token } = await registerAndLogin(e);
+  await handleActivate(authReq(token, { code }), e);
+  const res = await handleActivate(authReq(token, { code }), e);
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).status, 'active');
+});
+
+test('已激活账号提交另一张未使用的码不会吞掉它', async () => {
+  const e = env();
+  const { code, token } = await registerAndLogin(e);
+  await handleActivate(authReq(token, { code }), e);
+  const otherCode = 'ABCD-EFGH-JKMN-PQRS';
+  const otherHash = await hashCode(otherCode);
+  e.DB.codes.push({ code_hash: otherHash, account_id: null, used_at: null });
+  const res = await handleActivate(authReq(token, { code: otherCode }), e);
+  assert.equal(res.status, 200);
+  const row = e.DB.codes.find((c) => c.code_hash === otherHash);
+  assert.equal(row.account_id, null);
+});
+
+test('disabled 账号提交合法未用码报 account_disabled 且码未绑定', async () => {
+  const e = env();
+  const { code, token } = await registerAndLogin(e);
+  e.DB.accounts[0].status = 'disabled';
+  const res = await handleActivate(authReq(token, { code }), e);
+  assert.equal(res.status, 403);
+  assert.equal((await res.json()).error, 'account_disabled');
+  const codeHash = await hashCode(code);
+  const row = e.DB.codes.find((c) => c.code_hash === codeHash);
+  assert.equal(row.account_id, null);
+});
