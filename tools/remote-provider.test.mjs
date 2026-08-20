@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRemoteProvider, REMOTE_STORAGE_KEY } from '../lib/remote-provider.js';
+import { generateCek, exportCek, encryptJson } from '../lib/crypto.js';
 
 function memStorage() {
   const map = new Map();
@@ -122,4 +123,137 @@ test('lock 清掉会话', async () => {
   await p.login('a@b.com', 'rahasia123');
   p.lock();
   assert.equal(storage.getItem(REMOTE_STORAGE_KEY), null);
+});
+
+// --- 以下为审查追加：区分「服务器明确拒绝」与「网络/服务器故障」 ---
+
+test('服务器返回 account_disabled 时，init 清掉会话', async () => {
+  const storage = memStorage();
+  storage.setItem(REMOTE_STORAGE_KEY, JSON.stringify({
+    token: 'T', status: 'active', cek: 'KUNCI', contentVersion: 'v5',
+    expiresAt: Date.now() + 86400000,
+  }));
+  const api = fakeApi({ '/content-key': () => { throw new Error('account_disabled'); } });
+  const p = createRemoteProvider({
+    fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
+  });
+  assert.deepEqual(await p.init(), { unlocked: false, status: 'none' });
+  assert.equal(storage.getItem(REMOTE_STORAGE_KEY), null);
+});
+
+test('服务器返回 unauthorized 时，init 清掉会话', async () => {
+  const storage = memStorage();
+  storage.setItem(REMOTE_STORAGE_KEY, JSON.stringify({
+    token: 'T', status: 'active', cek: 'KUNCI', contentVersion: 'v5',
+    expiresAt: Date.now() + 86400000,
+  }));
+  const api = fakeApi({ '/content-key': () => { throw new Error('unauthorized'); } });
+  const p = createRemoteProvider({
+    fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
+  });
+  assert.deepEqual(await p.init(), { unlocked: false, status: 'none' });
+  assert.equal(storage.getItem(REMOTE_STORAGE_KEY), null);
+});
+
+test('服务器返回 no_content_key（服务器自己的问题）时不清会话，仍可用', async () => {
+  const storage = memStorage();
+  storage.setItem(REMOTE_STORAGE_KEY, JSON.stringify({
+    token: 'T', status: 'active', cek: 'KUNCI', contentVersion: 'v5',
+    expiresAt: Date.now() + 86400000,
+  }));
+  const api = fakeApi({ '/content-key': () => { throw new Error('no_content_key'); } });
+  const p = createRemoteProvider({
+    fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
+  });
+  assert.deepEqual(await p.init(), { unlocked: true, status: 'active' });
+  assert.ok(storage.getItem(REMOTE_STORAGE_KEY));
+});
+
+test('网络异常（TypeError，fetch 自己的错误）时不清会话，仍可用', async () => {
+  const storage = memStorage();
+  storage.setItem(REMOTE_STORAGE_KEY, JSON.stringify({
+    token: 'T', status: 'active', cek: 'KUNCI', contentVersion: 'v5',
+    expiresAt: Date.now() + 86400000,
+  }));
+  const api = fakeApi({ '/content-key': () => { throw new TypeError('Failed to fetch'); } });
+  const p = createRemoteProvider({
+    fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
+  });
+  assert.deepEqual(await p.init(), { unlocked: true, status: 'active' });
+  assert.ok(storage.getItem(REMOTE_STORAGE_KEY));
+});
+
+test('内容版本比会话新时，load 会自动刷新密钥再解密', async () => {
+  const cek1 = await generateCek();
+  const cek2 = await generateCek();
+  const cek1B64 = await exportCek(cek1);
+  const cek2B64 = await exportCek(cek2);
+  const packsV2 = { p2: [{ word: 'dua' }] };
+  const cipherV2 = await encryptJson(packsV2, cek2);
+
+  let keyCallCount = 0;
+  const contentKeyResponses = [
+    { cek: cek1B64, contentVersion: 'v1', expiresAt: Date.now() + 86400000 },
+    { cek: cek2B64, contentVersion: 'v2', expiresAt: Date.now() + 86400000 },
+  ];
+  const api = fakeApi({
+    '/login': { token: 'T', status: 'active' },
+    '/content-key': () => contentKeyResponses[Math.min(keyCallCount++, contentKeyResponses.length - 1)],
+  });
+
+  let version = 'v1'; // manifest 报告的版本，稍后模拟内容升级
+  const fetchJson = async (path) => {
+    if (path.endsWith('manifest.json')) return { contentVersion: version };
+    if (path === 'data/v2/packs.enc') return cipherV2;
+    throw new Error(`unexpected ${path}`);
+  };
+  const p = createRemoteProvider({ fetchJson, apiFetch: api.apiFetch, storage: memStorage() });
+
+  await p.login('a@b.com', 'rahasia123'); // 内部 refreshKey，会话落在 v1
+
+  version = 'v2'; // Pages 上内容已经升级，但会话密钥还是 v1
+  const packs = await p.getPacks();
+  assert.deepEqual(packs, packsV2);
+
+  const keyCalls = api.calls.filter((c) => c.path === '/content-key');
+  assert.equal(keyCalls.length, 2); // login 时一次，load 发现版本不一致又刷新一次
+});
+
+test('刷新密钥后清空内存缓存，同一名字重新解密而不是吐旧值', async () => {
+  const cek1 = await generateCek();
+  const cek2 = await generateCek();
+  const cek1B64 = await exportCek(cek1);
+  const cek2B64 = await exportCek(cek2);
+  const packsV1 = { p1: [{ word: 'satu' }] };
+  const packsV2 = { p2: [{ word: 'dua' }] };
+  const cipherV1 = await encryptJson(packsV1, cek1);
+  const cipherV2 = await encryptJson(packsV2, cek2);
+
+  let keyCallCount = 0;
+  const contentKeyResponses = [
+    { cek: cek1B64, contentVersion: 'v1', expiresAt: Date.now() + 86400000 },
+    { cek: cek2B64, contentVersion: 'v2', expiresAt: Date.now() + 86400000 },
+  ];
+  const api = fakeApi({
+    '/login': { token: 'T', status: 'active' },
+    '/activate': { ok: true, status: 'active' },
+    '/content-key': () => contentKeyResponses[Math.min(keyCallCount++, contentKeyResponses.length - 1)],
+  });
+
+  let version = 'v1';
+  const fetchJson = async (path) => {
+    if (path.endsWith('manifest.json')) return { contentVersion: version };
+    if (path === `data/${version}/packs.enc`) return version === 'v1' ? cipherV1 : cipherV2;
+    throw new Error(`unexpected ${path}`);
+  };
+  const p = createRemoteProvider({ fetchJson, apiFetch: api.apiFetch, storage: memStorage() });
+
+  await p.login('a@b.com', 'rahasia123'); // 会话落在 v1
+  const first = await p.getPacks();
+  assert.deepEqual(first, packsV1); // 缓存了 v1 的明文
+
+  await p.activate('ABCD-EFGH-JKMN-PQRS'); // 再刷新一次密钥（v2），应清空内存缓存
+  version = 'v2';
+  const second = await p.getPacks();
+  assert.deepEqual(second, packsV2); // 不是 first 时缓存的 v1 内容
 });
