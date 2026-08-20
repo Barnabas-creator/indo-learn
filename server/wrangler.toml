@@ -1,0 +1,12 @@
+name = "indo-learn-api"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "indo-learn"
+database_id = "5ae36065-0e09-4832-8d2b-3d5e73b2f4ed"
+
+[vars]
+AUTO_ISSUE_CODE = "true"
+ALLOWED_ORIGIN = "https://barnabas-creator.github.io"
