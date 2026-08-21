@@ -91,3 +91,18 @@ test('连 recordError 本身也失败时依然不抛出', async () => {
     );
   });
 });
+
+test('fetch 收到 signal 参数（5秒超时）', async () => {
+  let seenOptions = null;
+  await withFetch(async (url, options) => {
+    seenOptions = options;
+    return new Response('{"ok":true}', { status: 200 });
+  }, async () => {
+    await notifyOwner(
+      { DB: { prepare() { return { bind() { return this; }, async run() { return { meta: { last_row_id: 1 } }; } }; } },
+        TELEGRAM_BOT_TOKEN: 'T', TELEGRAM_CHAT_ID: 'C' },
+      'x',
+    );
+  });
+  assert(seenOptions.signal instanceof AbortSignal);
+});

@@ -37,7 +37,7 @@ export function buildResetPasswordSql(email, hash, salt) {
 
 // codes：SUBSTR 在 SQL 里就把哈希截断，完整哈希从头到尾不出数据库、不落终端。
 export function buildCodesSql(unusedOnly) {
-  const cols = 'SUBSTR(code_hash, 1, 8) AS hash_prefix, account_id, used_at';
+  const cols = 'SUBSTR(code_hash, 1, 8) AS hash_prefix, account_id, used_at, expires_at';
   if (unusedOnly) {
     return `SELECT ${cols} FROM codes WHERE account_id IS NULL ORDER BY issued_at;`;
   }

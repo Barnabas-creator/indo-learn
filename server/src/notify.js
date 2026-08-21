@@ -2,6 +2,8 @@
 // 而不是显示给注册者本人（卖码模式）。
 import { recordError } from './db.js';
 
+const NOTIFY_TIMEOUT_MS = 5000;
+
 export async function notifyOwner(env, text) {
   const token = env.TELEGRAM_BOT_TOKEN;
   const chatId = env.TELEGRAM_CHAT_ID;
@@ -15,6 +17,7 @@ export async function notifyOwner(env, text) {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text }),
+      signal: AbortSignal.timeout(NOTIFY_TIMEOUT_MS),
     });
     if (!res.ok) {
       await recordError(env.DB, {

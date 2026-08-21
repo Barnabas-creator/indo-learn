@@ -190,7 +190,7 @@ node tools/admin.mjs enable someone@example.com
 # 重置密码（本地算好 PBKDF2 哈希 + 盐再写库，不是明文入库）
 node tools/admin.mjs reset-password someone@example.com --password '新密码'
 
-# 查激活码绑定情况（哈希只显示前 8 位，account_id、used_at）
+# 查激活码绑定情况（哈希只显示前 8 位，account_id、used_at、expires_at）
 node tools/admin.mjs codes
 node tools/admin.mjs codes --unused            # 只看还没被绑定的码
 ```
@@ -309,7 +309,7 @@ node tools/push-content-key.mjs --password '密码'  # remote 模式：把新密
 | `lib/tts.js` | Web Speech `id-ID` 封装 |
 | `lib/icons.js` / `lib/emoji-map.js` | 词 → OpenMoji 映射，三级回退 |
 | `lib/views/` | 视图：解锁（旧模式）、注册/登录/激活（`auth.js`，新模式）、单词包、对话、语法 |
-| `server/` | Cloudflare Workers + D1 后端：`src/routes.js`（四个接口）、`src/crypto.js`（密码哈希/令牌）、`src/codes.js`（激活码生成/哈希）、`src/db.js`（SQL 封装）、`schema.sql`（建表）、`wrangler.toml`（部署配置） |
+| `server/` | Cloudflare Workers + D1 后端：`src/routes.js`（五个接口：`POST /register`、`POST /login`、`POST /activate`、`POST /request-code`、`GET /content-key`）、`src/crypto.js`（密码哈希/令牌）、`src/codes.js`（激活码生成/哈希）、`src/db.js`（SQL 封装）、`schema.sql`（建表）、`wrangler.toml`（部署配置） |
 | `tools/` | 提取、生成、校验、打包脚本（本机运行） |
 | `tools/push-content-key.mjs` | 把内容密钥灌进 D1（发布流程第 2 步，见上） |
 | `tools/issue-code.mjs` | 卖码模式下本地批量生成激活码，明文只打印一次 |
