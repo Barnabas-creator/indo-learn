@@ -16,7 +16,8 @@
 
 `lib/config.js` 里的 `AUTH_MODE` 决定走哪种：
 
-- `'remote'`（当前线上用的）：账号 + 激活码，服务器（Cloudflare Workers + D1）能吊销单个账号。见下面「账号系统」。
+- `'remote'`（当前线上用的）：账号 + 激活码，服务器（Cloudflare Workers + D1）能吊销单个账号。
+  **注册即送 7 天全量试用**，不用等激活码就能立刻用。见下面「账号系统」「试用机制」。
 - `'password'`（旧模式，仍保留代码，紧急回退用）：全员共用一个内容密码，纯静态站做不到吊销。见下面「安全边界」。
 
 ## 打包内容
@@ -109,15 +110,23 @@ export $(cat ~/.cloudflare-token) && npx wrangler versions view <最新 Version 
 ### D1 表结构（五张）
 
 ```sql
-accounts(id, email UNIQUE, password_hash, salt, status, created_at)
+accounts(id, email UNIQUE, password_hash, salt, status, trial_ends_at, created_at)
 codes(code_hash UNIQUE, account_id NULL, issued_at, used_at, expires_at NULL)  -- 新码 expires_at 恒为 NULL（已取消过期，见下）
 content_keys(version, cek, is_current, created_at)
 attempts(ip, endpoint, ts)          -- 限流用，见 idx_attempts 索引
 error_log(id, ts, method, path, name, message)  -- 未被业务逻辑捕获的异常，纯排障用
 ```
 
-完整建表语句见 `server/schema.sql`；`status` 取值 `pending`（未激活）/ `active` /
-`disabled`（吊销）。
+完整建表语句见 `server/schema.sql`；`status` 是个四态状态机：
+
+- `pending`（未激活，遗留值）——`createAccount` 不传 `status` 时的默认值，当前
+  `/register` 已经不会再产出这个状态（见下面「试用机制」），只有旧调用方/测试还会用到。
+- `trial`（试用中）——`/register` 建的新账号从一开始就是这个状态。
+- `active`（已激活/已付费）——输对激活码之后。
+- `disabled`（吊销）——负责人用 `tools/admin.mjs disable` 手动设置。
+
+`trial_ends_at` 只有 `trial` 状态的账号会写值（毫秒时间戳），其余状态不使用（`active`
+账号保留历史值不清空，方便日后统计试用转化，但不再参与任何判断）。
 
 日常查账号状态、停用/启用账号、重置密码、查激活码绑定情况，用 `tools/admin.mjs`
 （见下面「运维」），不要手写 SQL——它会带上安全的字段筛选（比如查账号从不选
@@ -127,6 +136,39 @@ error_log(id, ts, method, path, name, message)  -- 未被业务逻辑捕获的�
 cd server
 export $(cat ~/.cloudflare-token) && npx wrangler d1 execute indo-learn --remote --command "SELECT ..."
 ```
+
+### 试用机制：注册即送 7 天全量试用
+
+`server/src/routes.js` 里的 `TRIAL_DAYS = 7`。`/register` 建账号时直接把 `status`
+设成 `trial`、`trial_ends_at = now + 7 天`，同时照常生成一张激活码绑定到这个账号——
+但试用期间**不发给用户本人**，负责人先攥着，等对方确认付费了再手动告知（Telegram
+推送文案里会写清楚「付费后发给他」）。前端注册成功后自动登录，直接进首页，不再
+经过「显示码/待发放提示 → 激活页」那一步；激活页仍然可达，用户付费后从首页横幅的
+「输入激活码」按钮进去输码。
+
+`GET /content-key` 对 `trial` 账号的处理：
+
+- `now < trial_ends_at`：正常放行，返回内容密钥；但 `expiresAt`（客户端本地缓存密钥
+  的有效期）**截断到 `Math.min(now + 30 天, trial_ends_at)`**，不是固定 30 天。
+- `now >= trial_ends_at`：返回 `403 { error: 'trial_expired' }`，前端清会话、回登录页，
+  显示「试用已结束，请联系管理员购买完整版」。
+
+**为什么 `expiresAt` 要截断到试用结束，而不是照常给 30 天**：客户端离线时靠本地缓存的
+密钥继续用，这是整个账号系统「可吊销 vs 可离线」权衡下故意留的口子（见「安全边界」）。
+如果试用账号也按普通账号给 30 天缓存有效期，用户断网后能拿着这把钥匙把 7 天试用
+白嫖成一个月——`trial_ends_at` 形同虚设。截断之后，本地缓存最多撑到试用真正到期
+那一刻，离线也拦得住（前端 `lib/remote-provider.js` 的 `init()` 里，本地时钟一过
+`expiresAt` 就地清会话，不用等联网时服务器再拒一次）。
+
+`active` 状态不受这条限制，仍然是固定 30 天。
+
+手动给账号补/延长试用期（比如老用户续期、内测账号重新给一段）：
+
+```bash
+node tools/admin.mjs grant-trial someone@example.com --days 7
+```
+
+会把该账号 `status` 设为 `trial`、`trial_ends_at` 设为 `now + 7 天`（覆盖旧值，不叠加）。
 
 ## 两种发码模式
 
@@ -168,10 +210,11 @@ export $(cat ~/.cloudflare-token) && npx wrangler d1 execute indo-learn --remote
 ### 待激活用户拿不到码怎么办：`POST /request-code`
 
 负责人可能没及时看到通知，注册者不该无限期干等。激活页有「重新申请激活码」按钮，
-调 `POST /request-code`（需要 Bearer 令牌）：账号还是 `pending` 状态时，作废该账号名下
-所有未使用的旧码（`expires_at` 从 NULL 置成 0，等同立即报 `code_expired`），生成一张
-新码（同样不设过期）重新绑定 + 推送 Telegram；账号已经是 `active` 直接返回
-`{ok:true, status:'active'}`；`disabled` 账号返回 403。限流：同一 IP 每小时最多 3 次。
+调 `POST /request-code`（需要 Bearer 令牌）：账号是 `pending` 或 `trial` 状态时，作废该
+账号名下所有未使用的旧码（`expires_at` 从 NULL 置成 0，等同立即报 `code_expired`），
+生成一张新码（同样不设过期）重新绑定 + 推送 Telegram（`trial` 账号推送里会带上试用
+到期时间）；账号已经是 `active` 直接返回 `{ok:true, status:'active'}`；`disabled`
+账号返回 403。限流：同一 IP 每小时最多 3 次。
 
 ### Telegram 通知配置
 
@@ -189,12 +232,27 @@ export $(cat ~/.cloudflare-token) && npx wrangler secret put TELEGRAM_CHAT_ID
 不报错；推送失败（网络问题、Telegram 侧故障）也绝不影响注册/激活主流程，只留一条
 `error_log` 供排障。
 
+注册即送试用起，`/register` 的推送文案改成「🔑 新用户试用中」，带上试用到期时间
+（固定按雅加达时区 UTC+7 显示，不依赖 Workers 运行时自己的时区）：
+
+```
+🔑 新用户试用中
+
+邮箱：xxx@example.com
+激活码：XXXX-XXXX-XXXX-XXXX（付费后发给他）
+试用到期：8月29日 14:30
+```
+
+`/request-code` 的「🔄 重新申请激活码」文案不变，只是 `trial` 账号会多带一行
+「试用到期：…」；非试用账号（`trial_ends_at` 为空，比如走 `issue-code.mjs` 散码
+流程的老式 pending 账号）不显示这一行。
+
 ## 运维：`tools/admin.mjs`
 
 ```bash
 cd /home/barnabas/印尼语学习
 
-# 列出账号（id / email / status / created_at，不显示哈希与盐）
+# 列出账号（id / email / status / trial_ends_at / created_at，不显示哈希与盐）
 node tools/admin.mjs list
 node tools/admin.mjs list --email rebecca      # 按邮箱关键字模糊筛选
 
@@ -204,6 +262,9 @@ node tools/admin.mjs enable someone@example.com
 
 # 重置密码（本地算好 PBKDF2 哈希 + 盐再写库，不是明文入库）
 node tools/admin.mjs reset-password someone@example.com --password '新密码'
+
+# 补/延长试用期（把账号设为 trial，trial_ends_at = now + N 天，覆盖旧值）
+node tools/admin.mjs grant-trial someone@example.com --days 7
 
 # 查激活码绑定情况（哈希只显示前 8 位，account_id、used_at、expires_at）
 node tools/admin.mjs codes
