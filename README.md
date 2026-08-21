@@ -73,8 +73,8 @@ node tools/pack-content.mjs --password '新密码' --version v2
 
 - 线上地址：`https://indo-learn-api.barnabas7223.workers.dev`
 - D1 数据库名：`indo-learn`
-- 四个接口：`POST /register`、`POST /login`、`POST /activate`、`GET /content-key`
-  （入参出参见 `docs/superpowers/specs/2026-08-20-账号激活码授权-design.md`）
+- 五个接口：`POST /register`、`POST /login`、`POST /activate`、`POST /request-code`、
+  `GET /content-key`（入参出参见 `docs/superpowers/specs/2026-08-20-账号激活码授权-design.md`）
 
 ### 部署 Worker
 
@@ -110,7 +110,7 @@ export $(cat ~/.cloudflare-token) && npx wrangler versions view <最新 Version 
 
 ```sql
 accounts(id, email UNIQUE, password_hash, salt, status, created_at)
-codes(code_hash UNIQUE, account_id NULL, issued_at, used_at)
+codes(code_hash UNIQUE, account_id NULL, issued_at, used_at, expires_at NULL)
 content_keys(version, cek, is_current, created_at)
 attempts(ip, endpoint, ts)          -- 限流用，见 idx_attempts 索引
 error_log(id, ts, method, path, name, message)  -- 未被业务逻辑捕获的异常，纯排障用
@@ -130,22 +130,49 @@ export $(cat ~/.cloudflare-token) && npx wrangler d1 execute indo-learn --remote
 
 ## 两种发码模式
 
-`server/wrangler.toml` 的 `[vars] AUTO_ISSUE_CODE` 控制，改了要 `npx wrangler deploy` 重新部署：
+`server/wrangler.toml` 的 `[vars] AUTO_ISSUE_CODE` 控制，改了要 `npx wrangler deploy` 重新部署。
+**两种模式下 `/register` 都会当场生成一张码、直接绑定到刚建的账号**（一张码只能激活它
+所属的那个账号），码 30 分钟内不激活就失效，且**都会推送到负责人的 Telegram**
+（见下面「Telegram 通知配置」）；区别只在于明文码是否也直接返回给注册者本人：
 
-- `"true"`（前期，自己人用）：`/register` 成功当场返回一张激活码，注册页直接显示 + 提供
+- `"true"`（前期，自己人用）：`/register` 响应里带明文码，注册页直接显示 + 提供
   复制按钮，用户自己走完注册 → 激活。
-- `"false"`（后期，卖码模式）：`/register` 只建账号，**不再**顺手生成码——那张码的明文
-  谁都拿不到（服务器只存哈希），生成了也没法发放。改成这个模式前，必须先用
-  `tools/issue-code.mjs` 预先批量生成一批码：
+- `"false"`（后期，卖码模式）：`/register` 响应里**没有**明文码（服务器只存哈希，给了
+  也白给）——注册页提示「激活码将由管理员发放，请联系管理员获取」，明文码只在
+  Telegram 推送里能看到，由负责人手动告知买家。
+
+  这个模式下不再需要靠 `tools/issue-code.mjs` 预先批量生码——每次注册都会自动生成
+  绑定好的码。`issue-code.mjs` 仍然保留，用于批量生成**不绑定任何账号**的散码（`account_id`
+  为空、永不过期），给老式「先发码后注册」的场景用：
 
   ```bash
   cd /home/barnabas/印尼语学习
   node tools/issue-code.mjs --count 20
   ```
 
-  码的哈希会写进 D1 的 `codes` 表（`account_id` 为空，等用户激活时才绑定），明文只在
-  终端打印这一次——**立刻复制保存**，脚本不会再吐第二次。之后手动发给买家（微信/邮件
-  等），买家注册后自己去激活页输入。
+### 待激活用户拿不到码怎么办：`POST /request-code`
+
+负责人可能在睡觉，注册者不能干等 30 分钟码过期。激活页有「重新申请激活码」按钮，
+调 `POST /request-code`（需要 Bearer 令牌）：账号还是 `pending` 状态时，作废该账号名下
+所有未使用的旧码，生成一张新码（30 分钟有效）重新绑定 + 推送 Telegram；账号已经是
+`active` 直接返回 `{ok:true, status:'active'}`；`disabled` 账号返回 403。限流：同一 IP
+每小时最多 3 次。
+
+### Telegram 通知配置
+
+推送用的凭据是两个 Workers Secret，不进 `wrangler.toml`、不进仓库：
+
+```bash
+cd server
+export $(cat ~/.cloudflare-token) && npx wrangler secret put TELEGRAM_BOT_TOKEN
+# 交互式输入 bot token
+export $(cat ~/.cloudflare-token) && npx wrangler secret put TELEGRAM_CHAT_ID
+# 交互式输入负责人的 Telegram chat id
+```
+
+本地开发/测试环境没配这两个变量时，`notifyOwner`（`server/src/notify.js`）直接跳过，
+不报错；推送失败（网络问题、Telegram 侧故障）也绝不影响注册/激活主流程，只留一条
+`error_log` 供排障。
 
 ## 运维：`tools/admin.mjs`
 
