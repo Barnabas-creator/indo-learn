@@ -5,6 +5,9 @@ import {
 import { renderDialogList, renderDialog } from './lib/views/dialogs.js';
 import { renderGrammarList, renderGrammarModule } from './lib/views/grammar.js';
 import { renderUnlock } from './lib/views/unlock.js';
+import { renderLogin, renderRegister, renderCodeIssued, renderActivate, AUTH_ERRORS } from './lib/views/auth.js';
+import { AUTH_MODE } from './lib/config.js';
+import { normalizeEmail } from './lib/remote-provider.js';
 import { LEVELS, PACKS } from './lib/catalog.js';
 
 export function start(root, provider, tts) {
@@ -14,6 +17,7 @@ export function start(root, provider, tts) {
   let packId = null; // 当前打开的包 id
   let detailId = null; // 对话/语法的详情 id
   let wordsByPack = {}; // 解锁后的词条表 { 包id: [词条…] }，只在内存
+  let sessionEmail = null; // 当前登录邮箱，用来校验暂存激活码是不是同一个账号的
 
   function showUnlock(error = '', busy = false) {
     renderUnlock(root, {
@@ -27,6 +31,103 @@ export function start(root, provider, tts) {
           render();
         } catch (err) {
           showUnlock(err.message);
+        }
+      },
+    });
+  }
+
+  const msg = (err) => AUTH_ERRORS[err?.message] ?? AUTH_ERRORS.default;
+
+  // 注册成功但自动登录失败时，激活码不能跟着丢：单独存一份，
+  // 激活成功后才清掉，刷新页面/重开浏览器也能在激活页找回来。
+  const PENDING_CODE_KEY = 'indo-learn-pending-code';
+  const savePendingCode = (email, code) =>
+    localStorage.setItem(PENDING_CODE_KEY, JSON.stringify({ email: normalizeEmail(email), code }));
+  const readPendingCode = () => {
+    try {
+      return JSON.parse(localStorage.getItem(PENDING_CODE_KEY));
+    } catch {
+      return null;
+    }
+  };
+  const clearPendingCode = () => localStorage.removeItem(PENDING_CODE_KEY);
+
+  function showLogin(error = '', busy = false) {
+    renderLogin(root, {
+      error,
+      busy,
+      onSwitch: () => showRegister(),
+      onSubmit: async (email, password) => {
+        showLogin('', true);
+        try {
+          const { status } = await provider.login(email, password);
+          sessionEmail = normalizeEmail(email);
+          if (status === 'active') {
+            wordsByPack = await provider.getPacks();
+            render();
+          } else {
+            showActivate();
+          }
+        } catch (err) {
+          showLogin(msg(err));
+        }
+      },
+    });
+  }
+
+  function showRegister(error = '', busy = false) {
+    renderRegister(root, {
+      error,
+      busy,
+      onSwitch: () => showLogin(),
+      onSubmit: async (email, password) => {
+        showRegister('', true);
+        try {
+          const out = await provider.register(email, password);
+          // 先把码亮出来、存到本地，再去登录：账号和码在服务端已经生成好了，
+          // 后面 login() 哪怕失败也不能让用户连码都没看到就卡死。
+          if (out.code) savePendingCode(email, out.code);
+          const afterCodeSeen = async () => {
+            try {
+              await provider.login(email, password);
+              sessionEmail = normalizeEmail(email);
+              showActivate();
+            } catch (err) {
+              showLogin(msg(err));
+            }
+          };
+          if (out.code) renderCodeIssued(root, { code: out.code, onNext: afterCodeSeen });
+          else await afterCodeSeen();
+        } catch (err) {
+          showRegister(msg(err));
+        }
+      },
+    });
+  }
+
+  function showActivate(error = '', busy = false, inputCode = null) {
+    // 暂存码是跟邮箱绑定的：换了账号登录，不能把上一个账号的码带出来。
+    let pending = readPendingCode();
+    if (pending && pending.email !== sessionEmail) {
+      clearPendingCode(); // 无主的暂存记录，顺手清掉
+      pending = null;
+    }
+    // 用户刚手输的码优先级更高：失败重渲染不能把手输的值换回暂存码。
+    const code = inputCode ?? pending?.code ?? '';
+    renderActivate(root, {
+      error,
+      busy,
+      code,
+      onLogout: () => { clearPendingCode(); sessionEmail = null; provider.lock(); showLogin(); },
+      onSubmit: async (typed) => {
+        showActivate('', true, typed);
+        try {
+          await provider.activate(typed);
+          clearPendingCode();
+          wordsByPack = await provider.getPacks();
+          render();
+        } catch (err) {
+          showActivate(msg(err), false, typed);
         }
       },
     });
@@ -193,19 +294,45 @@ export function start(root, provider, tts) {
     }
   }
 
+  // 只有「确认解不开」或「服务器明确拒绝」才清凭据：
+  // - content_decrypt_failed：真解不开这一版内容（provider.js/remote-provider.js 在
+  //   decryptJson 失败时统一改抛这个），密钥/密码已经对不上了，留着会话没意义。
+  // - '未解锁'：远程模式下 session 已经被清掉了（refreshKey 内部判定吊销/未激活时会
+  //   clear()），说明服务器已经明确拒绝过一次。
+  // 其余情况——fetch 失败（SW 缓存被回收、.enc 404、断网）、content_outdated（新版本
+  // 内容已发布但暂时联不上网刷新密钥）——都是网络类问题，离线可用是核心设计，
+  // 不能被一次瞬时失败就把用户踢回登录/解锁页。
+  const FATAL_CONTENT_ERRORS = new Set(['content_decrypt_failed', '未解锁']);
+
+  async function loadPacksAfterUnlock() {
+    try {
+      wordsByPack = await provider.getPacks();
+      render();
+    } catch (err) {
+      if (FATAL_CONTENT_ERRORS.has(err?.message)) {
+        provider.lock();
+        return AUTH_MODE === 'remote' ? showLogin() : showUnlock('内容已更新，请重新输入密码');
+      }
+      showContentRetry();
+    }
+  }
+
+  function showContentRetry() {
+    root.innerHTML = '<div class="stack">'
+      + '<p class="error">内容暂时读取失败，请检查网络后重试</p>'
+      + '<button class="retry">重试</button></div>';
+    root.querySelector('.retry').addEventListener('click', loadPacksAfterUnlock);
+  }
+
   (async () => {
     try {
-      const { unlocked } = await provider.init();
-      if (!unlocked) return showUnlock();
-      try {
-        wordsByPack = await provider.getPacks();
-      } catch {
-        // 存下来的凭据能解开这一版内容，是没法只靠版本号断定的：
-        // 解不开就丢掉凭据回解锁页，别把用户堵在死页面上。
-        provider.lock();
-        return showUnlock('内容已更新，请重新输入密码');
+      const { unlocked, status, email } = await provider.init();
+      sessionEmail = email ? normalizeEmail(email) : null; // provider 已归一化，这里再做一次保险，防旧会话数据是原样存的
+      if (!unlocked) {
+        if (AUTH_MODE !== 'remote') return showUnlock();
+        return status === 'pending' ? showActivate() : showLogin();
       }
-      render();
+      await loadPacksAfterUnlock();
     } catch (err) {
       root.innerHTML = `<p class="error">加载失败：${err.message || '内容读取出错'}</p>`;
     }
