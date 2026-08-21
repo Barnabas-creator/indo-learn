@@ -78,3 +78,11 @@ test('带查询串的 GET /content-key?x=1 能命中路由（不再是 404）', 
   );
   assert.notEqual(res.status, 404);
 });
+
+test('POST /request-code 能命中路由（不再是 404）', async () => {
+  const res = await worker.fetch(
+    new Request('https://api.test/request-code', { method: 'POST' }),
+    env,
+  );
+  assert.notEqual(res.status, 404);
+});

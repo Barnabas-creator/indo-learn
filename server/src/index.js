@@ -1,5 +1,7 @@
 // 入口：路由分发、CORS、错误兜底。业务逻辑都在 routes.js。
-import { handleRegister, handleLogin, handleActivate, handleContentKey, json } from './routes.js';
+import {
+  handleRegister, handleLogin, handleActivate, handleContentKey, handleRequestCode, json,
+} from './routes.js';
 import { recordError } from './db.js';
 
 export function corsHeaders(env) {
@@ -15,6 +17,7 @@ const ROUTES = {
   'POST /register': handleRegister,
   'POST /login': handleLogin,
   'POST /activate': handleActivate,
+  'POST /request-code': handleRequestCode,
   'GET /content-key': handleContentKey,
 };
 

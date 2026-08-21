@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS codes (
   code_hash TEXT PRIMARY KEY,
   account_id INTEGER,
   issued_at INTEGER NOT NULL,
-  used_at INTEGER
+  used_at INTEGER,
+  expires_at INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS content_keys (

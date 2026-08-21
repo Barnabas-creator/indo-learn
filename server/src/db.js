@@ -22,18 +22,29 @@ export async function setAccountStatus(db, id, status) {
   await db.prepare('UPDATE accounts SET status = ? WHERE id = ?').bind(status, id).run();
 }
 
-export async function insertCode(db, { codeHash, accountId, now }) {
+export async function insertCode(db, {
+  codeHash, accountId, now, expiresAt = null,
+}) {
   await db
-    .prepare('INSERT INTO codes (code_hash, account_id, issued_at) VALUES (?, ?, ?)')
-    .bind(codeHash, accountId, now)
+    .prepare('INSERT INTO codes (code_hash, account_id, issued_at, expires_at) VALUES (?, ?, ?, ?)')
+    .bind(codeHash, accountId, now, expiresAt)
     .run();
 }
 
 export function findCode(db, codeHash) {
   return db
-    .prepare('SELECT code_hash, account_id, used_at FROM codes WHERE code_hash = ?')
+    .prepare('SELECT code_hash, account_id, used_at, expires_at FROM codes WHERE code_hash = ?')
     .bind(codeHash)
     .first();
+}
+
+// 重新申请激活码时，把这个账号名下所有还没用过的码作废（expires_at 设成 0，
+// 即公元纪元，任何后续的「是否过期」判断都会命中）——不删行，留痕方便排障。
+export async function expireCodesOfAccount(db, { accountId }) {
+  await db
+    .prepare('UPDATE codes SET expires_at = 0 WHERE account_id = ? AND used_at IS NULL')
+    .bind(accountId)
+    .run();
 }
 
 export async function bindCode(db, { codeHash, accountId, now }) {

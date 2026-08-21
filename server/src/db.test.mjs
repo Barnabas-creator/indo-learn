@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   createAccount, findAccountByEmail, setAccountStatus,
   insertCode, findCode, bindCode, currentContentKey,
-  countAttempts, recordAttempt, recordError,
+  countAttempts, recordAttempt, recordError, expireCodesOfAccount,
 } from './db.js';
 
 // 假 D1：记录收到的 SQL 与参数，按预设结果返回
@@ -47,10 +47,32 @@ test('改状态', async () => {
   assert.deepEqual(db.calls[0].args, ['active', 3]);
 });
 
-test('插入未绑定的码时 account_id 为 null', async () => {
+test('插入未绑定的码时 account_id 为 null，不传 expiresAt 时为 null（永不过期）', async () => {
   const db = fakeDb();
   await insertCode(db, { codeHash: 'CH', accountId: null, now: 5 });
-  assert.deepEqual(db.calls[0].args, ['CH', null, 5]);
+  assert.deepEqual(db.calls[0].args, ['CH', null, 5, null]);
+});
+
+test('插入码可以带上过期时间，绑定到指定账号', async () => {
+  const db = fakeDb();
+  await insertCode(db, {
+    codeHash: 'CH', accountId: 3, now: 5, expiresAt: 5 + 1800000,
+  });
+  assert.deepEqual(db.calls[0].args, ['CH', 3, 5, 1800005]);
+});
+
+test('查码把 expires_at 也选出来', async () => {
+  const db = fakeDb();
+  await findCode(db, 'CH');
+  assert.match(db.calls[0].sql, /expires_at/);
+});
+
+test('作废某账号名下未使用的码', async () => {
+  const db = fakeDb();
+  await expireCodesOfAccount(db, { accountId: 9 });
+  assert.match(db.calls[0].sql, /UPDATE codes/);
+  assert.match(db.calls[0].sql, /used_at IS NULL/);
+  assert.deepEqual(db.calls[0].args, [9]);
 });
 
 test('绑定码写入账号与使用时间', async () => {
