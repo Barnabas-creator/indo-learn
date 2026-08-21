@@ -557,6 +557,60 @@ test('request-code：没令牌报 unauthorized', async () => {
   assert.equal((await res.json()).error, 'unauthorized');
 });
 
+// --- ctx.waitUntil：Telegram 推送 fire-and-forget，不拖慢注册/重新申请的响应 ---
+
+test('handleRegister 传入带 waitUntil 的 ctx 时，推送交给 waitUntil，不等待它完成', async () => {
+  const e = { ...env(), TELEGRAM_BOT_TOKEN: 'T', TELEGRAM_CHAT_ID: 'C' };
+  const originalFetch = globalThis.fetch;
+  let notifyFetchCalled = false;
+  // 永不 resolve：模拟 Telegram 卡住。如果 handler 还在 await 这个 fetch，
+  // 下面的 handleRegister 调用会一直挂着，测试超时失败。
+  globalThis.fetch = () => { notifyFetchCalled = true; return new Promise(() => {}); };
+  const waited = [];
+  const ctx = { waitUntil: (p) => waited.push(p) };
+  let res;
+  try {
+    res = await handleRegister(req({ email: 'a@b.com', password: 'rahasia123' }), e, 1000, ctx);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(res.status, 200);
+  assert.equal(notifyFetchCalled, true); // 推送确实发起了……
+  assert.equal(waited.length, 1); // ……但交给了 ctx.waitUntil，不是被 handler await
+});
+
+test('handleRegister 没有 ctx（本地测试/开发环境）时仍照旧 await 推送', async () => {
+  const e = { ...env(), TELEGRAM_BOT_TOKEN: 'T', TELEGRAM_CHAT_ID: 'C' };
+  let notifyResolved = false;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { notifyResolved = true; return new Response('{"ok":true}', { status: 200 }); };
+  try {
+    await handleRegister(req({ email: 'a@b.com', password: 'rahasia123' }), e, 1000);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(notifyResolved, true); // 没有 ctx 时退回 await：函数返回时推送必然已经跑完
+});
+
+test('handleRequestCode 传入带 waitUntil 的 ctx 时，推送交给 waitUntil，不等待它完成', async () => {
+  const e = { ...env(), TELEGRAM_BOT_TOKEN: 'T', TELEGRAM_CHAT_ID: 'C' };
+  const { token } = await registerAndLogin(e);
+  const originalFetch = globalThis.fetch;
+  let notifyFetchCalled = false;
+  globalThis.fetch = () => { notifyFetchCalled = true; return new Promise(() => {}); };
+  const waited = [];
+  const ctx = { waitUntil: (p) => waited.push(p) };
+  let res;
+  try {
+    res = await handleRequestCode(authReq(token, {}), e, 5000, ctx);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(res.status, 200);
+  assert.equal(notifyFetchCalled, true);
+  assert.equal(waited.length, 1);
+});
+
 test('request-code：同一 IP 一小时内超过 3 次被限流', async () => {
   const e = env();
   const { token } = await registerAndLogin(e);

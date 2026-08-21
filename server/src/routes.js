@@ -76,7 +76,20 @@ function requestCodeMessage({ email, code, trialEndsAt }) {
   return `${codeMessage('🔄 重新申请激活码', { email, code })}${trialLine}`;
 }
 
-export async function handleRegister(request, env, now = Date.now()) {
+// notifyOwner 内部有 5 秒超时（见 notify.js），Telegram 慢的时候会原样拖慢调用方。
+// ctx 是 Workers 的 ExecutionContext，有 waitUntil 时用它把推送丢到响应之外去发
+// （fire-and-forget，不影响这次请求的响应时间，Worker 仍会等它跑完才真正结束）；
+// 本地测试没有 ctx（第三方假 env 也不会传），退回原来的 await，行为不变。
+function notifyInBackground(env, text, ctx) {
+  const p = notifyOwner(env, text);
+  if (ctx?.waitUntil) {
+    ctx.waitUntil(p);
+    return Promise.resolve();
+  }
+  return p;
+}
+
+export async function handleRegister(request, env, now = Date.now(), ctx) {
   if (await overLimit(env, request, '/register', now, {
     limit: REGISTER_RATE_LIMIT, windowMs: REGISTER_RATE_WINDOW_MS,
   })) {
@@ -106,7 +119,7 @@ export async function handleRegister(request, env, now = Date.now()) {
     codeHash: await hashCode(code), accountId, now, expiresAt: null,
   });
   // 负责人先攥着这张码：试用期间不发给用户，等对方确认付费了再手动告知。
-  await notifyOwner(env, registerTrialMessage({ email: mail, code, trialEndsAt }));
+  await notifyInBackground(env, registerTrialMessage({ email: mail, code, trialEndsAt }), ctx);
 
   // 自动发码模式（自己人用）：明文码同时也直接返回给前端，方便本地测试/内部使用。
   // 关掉自动发码（卖码模式，线上默认）：不把明文码给注册者本人，只推给负责人。
@@ -182,7 +195,7 @@ export async function handleActivate(request, env, now = Date.now()) {
   return json({ ok: true, status: 'active', trialEndsAt: account.trial_ends_at ?? null });
 }
 
-export async function handleRequestCode(request, env, now = Date.now()) {
+export async function handleRequestCode(request, env, now = Date.now(), ctx) {
   if (await overLimit(env, request, '/request-code', now, {
     limit: REQUEST_CODE_RATE_LIMIT, windowMs: REQUEST_CODE_RATE_WINDOW_MS,
   })) {
@@ -200,7 +213,9 @@ export async function handleRequestCode(request, env, now = Date.now()) {
   await insertCode(env.DB, {
     codeHash: await hashCode(code), accountId: account.id, now, expiresAt: null,
   });
-  await notifyOwner(env, requestCodeMessage({ email: account.email, code, trialEndsAt: account.trial_ends_at ?? null }));
+  await notifyInBackground(
+    env, requestCodeMessage({ email: account.email, code, trialEndsAt: account.trial_ends_at ?? null }), ctx,
+  );
   return json({ ok: true });
 }
 

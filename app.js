@@ -6,7 +6,7 @@ import { renderDialogList, renderDialog } from './lib/views/dialogs.js';
 import { renderGrammarList, renderGrammarModule } from './lib/views/grammar.js';
 import { renderUnlock } from './lib/views/unlock.js';
 import {
-  renderLogin, renderRegister, renderActivate, AUTH_ERRORS, escapeHtml,
+  renderLogin, renderRegister, renderActivate, renderCodeIssued, AUTH_ERRORS, escapeHtml,
 } from './lib/views/auth.js';
 import { AUTH_MODE, ADMIN_CONTACT } from './lib/config.js';
 import { normalizeEmail, trialDaysLeft } from './lib/remote-provider.js';
@@ -91,16 +91,23 @@ export function start(root, provider, tts) {
         showRegister('', true);
         try {
           // 注册即送 7 天全量试用：服务端已经把账号建成 trial 状态，不用再等码、
-          // 不用先经过「显示码/待发放提示 → 激活页」，登录一次直接进首页。
-          // 激活码这时候攥在负责人手里，付费后从首页横幅的「输入激活码」入口进激活页再输。
-          await provider.register(email, password);
+          // 不用先经过「待发放提示 → 激活页」，登录一次直接进首页。
+          // 卖码模式（生产默认）响应里没有明文码：激活码攥在负责人手里，付费后
+          // 从首页横幅的「输入激活码」入口进激活页再输，注册流程不用再提它。
+          // 自动发码模式（AUTO_ISSUE_CODE=true，自己人用）响应里带明文码：
+          // 让注册者当场复制保存，点「下一步」再进首页。
+          const regRes = await provider.register(email, password);
           const { status, trialEndsAt } = await provider.login(email, password);
           sessionEmail = normalizeEmail(email);
           accountStatus = status;
           accountTrialEndsAt = trialEndsAt;
           if (status === 'active' || status === 'trial') {
             wordsByPack = await provider.getPacks();
-            render();
+            if (regRes && regRes.code) {
+              renderCodeIssued(root, { code: regRes.code, onNext: () => render() });
+            } else {
+              render();
+            }
           } else {
             // 兜底：万一服务端某天又开始产出非试用的 pending 账号，仍然走原来的激活页。
             showActivate();

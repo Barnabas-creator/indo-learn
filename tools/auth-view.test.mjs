@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  AUTH_ERRORS, renderLogin, renderRegister, renderActivate, renderCodeIssued, renderCodePending,
+  AUTH_ERRORS, renderLogin, renderRegister, renderActivate, renderCodeIssued,
 } from '../lib/views/auth.js';
 
 // 极小的手写假 DOM：够 render* 函数 innerHTML 赋值后调 querySelector 绑事件即可，
@@ -102,22 +102,11 @@ test('激活码展示视图的 code 被转义，不含未转义的 <script>', ()
   assert.doesNotMatch(root.innerHTML, /<script>x<\/script>/);
 });
 
-// --- 卖码模式：renderCodePending / renderActivate 的重新申请入口 ---
-
-test('renderCodePending 显示注册邮箱与「去激活」按钮，不显示明文码', () => {
-  const root = fakeRoot();
-  renderCodePending(root, { email: 'a@b.com', onNext() {} });
-  assert.match(root.innerHTML, /注册成功/);
-  assert.match(root.innerHTML, /a@b\.com/);
-  assert.match(root.innerHTML, /去激活/);
-});
-
-test('renderCodePending 的 email 被转义，不含未转义的 <script>', () => {
-  const root = fakeRoot();
-  renderCodePending(root, { email: XSS_PAYLOAD, onNext() {} });
-  assert.doesNotMatch(root.innerHTML, /<script>x<\/script>/);
-  assert.match(root.innerHTML, /&lt;script&gt;/);
-});
+// --- 卖码模式：renderActivate 的重新申请入口 ---
+// （原来这里还有 renderCodePending 的用例：那是「注册成功但拿不到明文码」的
+// 过渡提示页，试用机制上线后注册即自动登录进首页，不再有调用点——需要联系
+// 管理员要码的场景已经由激活页本身覆盖（试用到期后重新登录会落到这里，见
+// app.js 的 showLogin），视图与测试一并删除，见 README「两种发码模式」。）
 
 test('激活视图带「重新申请激活码」按钮', () => {
   const root = fakeRoot();
@@ -146,21 +135,6 @@ test('激活视图的 notice 被转义，不含未转义的 <script>', () => {
 // --- 卖码模式：页面上写明管理员联系方式（邮箱从 lib/config.js 传入，视图不写死） ---
 
 const ADMIN_EMAIL = 'barnabas7223@gmail.com';
-
-test('renderCodePending 显示管理员邮箱与 mailto 链接', () => {
-  const root = fakeRoot();
-  renderCodePending(root, { email: 'a@b.com', adminContact: ADMIN_EMAIL, onNext() {} });
-  assert.match(root.innerHTML, new RegExp(`href="mailto:${ADMIN_EMAIL}"`));
-  assert.match(root.innerHTML, new RegExp(ADMIN_EMAIL));
-});
-
-test('renderCodePending 提示码长期有效，且指向「重新申请激活码」入口', () => {
-  const root = fakeRoot();
-  renderCodePending(root, { email: 'a@b.com', adminContact: ADMIN_EMAIL, onNext() {} });
-  assert.match(root.innerHTML, /激活码长期有效/);
-  assert.match(root.innerHTML, /重新申请激活码/);
-  assert.doesNotMatch(root.innerHTML, /3 ?小时/);
-});
 
 test('renderActivate 在重新申请按钮附近显示管理员邮箱与 mailto 链接', () => {
   const root = fakeRoot();

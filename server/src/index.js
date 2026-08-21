@@ -22,7 +22,9 @@ const ROUTES = {
 };
 
 export default {
-  async fetch(request, env) {
+  // ctx 是 Workers 的 ExecutionContext：register/request-code 里的 Telegram 推送靠它的
+  // waitUntil 做成 fire-and-forget（见 routes.js 的 notifyInBackground），不拖慢响应。
+  async fetch(request, env, ctx) {
     const cors = corsHeaders(env);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
@@ -35,7 +37,7 @@ export default {
       res = json({ error: 'not_found' }, 404);
     } else {
       try {
-        res = await handler(request, env);
+        res = await handler(request, env, undefined, ctx);
       } catch (err) {
         console.error(err);
         try {

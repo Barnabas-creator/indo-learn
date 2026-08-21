@@ -86,3 +86,58 @@ test('POST /request-code 能命中路由（不再是 404）', async () => {
   );
   assert.notEqual(res.status, 404);
 });
+
+// fetch(request, env, ctx) 把 ctx 一路传给 handler，注册请求命中 ctx.waitUntil
+// 而不是卡在等 Telegram 推送——用一个内存假 D1 走完整条 handleRegister 路径。
+test('fetch 把第三个参数 ctx 传给 handler：register 走 ctx.waitUntil，不阻塞响应', async () => {
+  const accounts = [];
+  const codes = [];
+  const db = {
+    prepare(sql) {
+      const stmt = { sql, args: [] };
+      return {
+        bind(...args) { stmt.args = args; return this; },
+        async first() {
+          if (/FROM accounts WHERE email/.test(sql)) {
+            return accounts.find((a) => a.email === stmt.args[0]) ?? null;
+          }
+          if (/COUNT\(\*\)/.test(sql)) return { n: 0 };
+          return null;
+        },
+        async run() {
+          if (/INSERT INTO accounts/.test(sql)) {
+            const [email, password_hash, salt, status, trial_ends_at, created_at] = stmt.args;
+            const id = accounts.length + 1;
+            accounts.push({
+              id, email, password_hash, salt, status, trial_ends_at, created_at,
+            });
+            return { meta: { last_row_id: id } };
+          }
+          if (/INSERT INTO codes/.test(sql)) codes.push({ code_hash: stmt.args[0] });
+          return { meta: { last_row_id: 0 } };
+        },
+      };
+    },
+  };
+  const e = {
+    ...env, DB: db, TELEGRAM_BOT_TOKEN: 'T', TELEGRAM_CHAT_ID: 'C',
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => new Promise(() => {}); // 模拟 Telegram 永不响应
+  let waitedCount = 0;
+  try {
+    const res = await worker.fetch(
+      new Request('https://api.test/register', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'a@b.com', password: 'rahasia123' }),
+      }),
+      e,
+      { waitUntil: () => { waitedCount += 1; } },
+    );
+    assert.equal(res.status, 200);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(waitedCount, 1);
+});
