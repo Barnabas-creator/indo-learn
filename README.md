@@ -110,7 +110,7 @@ export $(cat ~/.cloudflare-token) && npx wrangler versions view <最新 Version 
 
 ```sql
 accounts(id, email UNIQUE, password_hash, salt, status, created_at)
-codes(code_hash UNIQUE, account_id NULL, issued_at, used_at, expires_at NULL)
+codes(code_hash UNIQUE, account_id NULL, issued_at, used_at, expires_at NULL)  -- 新码 expires_at 恒为 NULL（已取消过期，见下）
 content_keys(version, cek, is_current, created_at)
 attempts(ip, endpoint, ts)          -- 限流用，见 idx_attempts 索引
 error_log(id, ts, method, path, name, message)  -- 未被业务逻辑捕获的异常，纯排障用
@@ -132,7 +132,7 @@ export $(cat ~/.cloudflare-token) && npx wrangler d1 execute indo-learn --remote
 
 `server/wrangler.toml` 的 `[vars] AUTO_ISSUE_CODE` 控制，改了要 `npx wrangler deploy` 重新部署。
 **两种模式下 `/register` 都会当场生成一张码、直接绑定到刚建的账号**（一张码只能激活它
-所属的那个账号），码 3 小时内不激活就失效，且**都会推送到负责人的 Telegram**
+所属的那个账号），**码不设过期时间、长期有效**，且**都会推送到负责人的 Telegram**
 （见下面「Telegram 通知配置」）；区别只在于明文码是否也直接返回给注册者本人：
 
 - `"true"`（前期，自己人用）：`/register` 响应里带明文码，注册页直接显示 + 提供
@@ -143,20 +143,35 @@ export $(cat ~/.cloudflare-token) && npx wrangler d1 execute indo-learn --remote
 
   这个模式下不再需要靠 `tools/issue-code.mjs` 预先批量生码——每次注册都会自动生成
   绑定好的码。`issue-code.mjs` 仍然保留，用于批量生成**不绑定任何账号**的散码（`account_id`
-  为空、永不过期），给老式「先发码后注册」的场景用：
+  为空、同样不设过期），给老式「先发码后注册」的场景用：
 
   ```bash
   cd /home/barnabas/印尼语学习
   node tools/issue-code.mjs --count 20
   ```
 
+### 为什么取消了过期时间
+
+早先版本码有 3 小时有效期（后来一度改成 30 分钟），设计初衷是防止码被滥用囤积。
+但这套系统本来就是「一码一账号」：注册时生成的码从一开始就绑定到那个账号，且
+`/activate` 要求先登录（必须有有效令牌）才能提交码——光有码明文没用，还得有那个
+账号的邮箱和密码。也就是说，过期时间能挡住的场景，早就被「码绑定账号」+「必须
+先登录」这两道锁挡住了，它挡不住任何过期时间之外的实际威胁。而代价是真实的：
+半夜注册、负责人在睡觉，几小时后码作废，用户只能自己摸索重新登录、点「重新
+申请激活码」。因此改为**码永不过期**，僵尸码（已绑账号但一直没激活的码）改由
+负责人定期用 `tools/admin.mjs` 人工清理（见下面「运维」）。
+
+库里仍留着一批取消过期之前发出的旧码（30 分钟版、3 小时版），它们的 `expires_at`
+是具体时间戳，到期后 `/activate` 仍然会报 `code_expired`——这条校验没有删，只是
+新码不会再带过期时间。
+
 ### 待激活用户拿不到码怎么办：`POST /request-code`
 
-负责人可能没及时看到通知，注册者不能干等 3 小时码过期。激活页有「重新申请激活码」按钮，
+负责人可能没及时看到通知，注册者不该无限期干等。激活页有「重新申请激活码」按钮，
 调 `POST /request-code`（需要 Bearer 令牌）：账号还是 `pending` 状态时，作废该账号名下
-所有未使用的旧码，生成一张新码（3 小时有效）重新绑定 + 推送 Telegram；账号已经是
-`active` 直接返回 `{ok:true, status:'active'}`；`disabled` 账号返回 403。限流：同一 IP
-每小时最多 3 次。
+所有未使用的旧码（`expires_at` 从 NULL 置成 0，等同立即报 `code_expired`），生成一张
+新码（同样不设过期）重新绑定 + 推送 Telegram；账号已经是 `active` 直接返回
+`{ok:true, status:'active'}`；`disabled` 账号返回 403。限流：同一 IP 每小时最多 3 次。
 
 ### Telegram 通知配置
 
@@ -193,11 +208,17 @@ node tools/admin.mjs reset-password someone@example.com --password '新密码'
 # 查激活码绑定情况（哈希只显示前 8 位，account_id、used_at、expires_at）
 node tools/admin.mjs codes
 node tools/admin.mjs codes --unused            # 只看还没被绑定的码
+node tools/admin.mjs codes --stale             # 只看僵尸码：已绑账号但从未激活
+
+# 清理僵尸码（码取消过期后，这批码不会再自动失效，得定期人工清）
+node tools/admin.mjs prune-codes               # 不加 --yes 只打印将删除的条数，不会真删
+node tools/admin.mjs prune-codes --yes         # 确认后真正删除
 ```
 
 ⚠️ 这个脚本直接改生产 D1（`indo-learn`），**只在个人开发机手动跑**，不接 CI、
 不接共享机器——同机其他进程能在 `ps` 里看到命令行参数（包括 `reset-password` 时的
-邮箱和算好的哈希/盐，虽然不是明文密码本身）。
+邮箱和算好的哈希/盐，虽然不是明文密码本身）。`prune-codes` 是删除操作，不加 `--yes`
+时只查数不动库，确认过条数再补 `--yes`。
 
 ## 发布流程
 
@@ -313,7 +334,7 @@ node tools/push-content-key.mjs --password '密码'  # remote 模式：把新密
 | `tools/` | 提取、生成、校验、打包脚本（本机运行） |
 | `tools/push-content-key.mjs` | 把内容密钥灌进 D1（发布流程第 2 步，见上） |
 | `tools/issue-code.mjs` | 卖码模式下本地批量生成激活码，明文只打印一次 |
-| `tools/admin.mjs` | 运维：查账号、停用/启用、重置密码、查激活码绑定 |
+| `tools/admin.mjs` | 运维：查账号、停用/启用、重置密码、查激活码绑定、清理僵尸码（`--stale`/`prune-codes`） |
 | `content-src/` | 明文内容，**不提交** |
 | `reference/` | 参考资料，**不提交** |
 | `data/` | 加密产物，提交并发布 |

@@ -6,12 +6,17 @@
 // 但同机其他进程仍能在 ps 里看到这条命令的参数），所以别在别人能看到你屏幕/
 // 进程列表的机器上跑。
 //
+// 激活码取消过期机制之后（见 server/src/routes.js），僵尸码（已绑定账号但
+// 从未激活）不会再自动失效，只能靠这个脚本定期人工清理：先 `codes --stale`
+// 看一眼有哪些，确认之后 `prune-codes --yes` 删掉。
+//
 // 用法：
 //   node tools/admin.mjs list [--email 关键字]
 //   node tools/admin.mjs disable <email>
 //   node tools/admin.mjs enable <email>
 //   node tools/admin.mjs reset-password <email> --password <新密码>
-//   node tools/admin.mjs codes [--unused]
+//   node tools/admin.mjs codes [--unused] [--stale]
+//   node tools/admin.mjs prune-codes [--yes]
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -36,12 +41,29 @@ export function buildResetPasswordSql(email, hash, salt) {
 }
 
 // codes：SUBSTR 在 SQL 里就把哈希截断，完整哈希从头到尾不出数据库、不落终端。
-export function buildCodesSql(unusedOnly) {
+// 取消过期机制后 expires_at 这一列继续保留——库里还有一批取消之前发出的旧码
+// 带真实过期时间，负责人偶尔还要看它们；新码都是 NULL，一眼能分清新旧。
+export function buildCodesSql(unusedOnly, staleOnly = false) {
   const cols = 'SUBSTR(code_hash, 1, 8) AS hash_prefix, account_id, used_at, expires_at';
+  // 僵尸码：已经绑定了账号、但从来没被激活用掉——这是取消过期之后唯一会
+  // 无限堆积的码，负责人要定期看一眼、决定要不要用 prune-codes 清掉。
+  if (staleOnly) {
+    return `SELECT ${cols} FROM codes WHERE account_id IS NOT NULL AND used_at IS NULL ORDER BY issued_at;`;
+  }
   if (unusedOnly) {
     return `SELECT ${cols} FROM codes WHERE account_id IS NULL ORDER BY issued_at;`;
   }
   return `SELECT ${cols} FROM codes ORDER BY issued_at;`;
+}
+
+// prune-codes：删掉僵尸码（已绑账号但从未激活）。跟 --stale 用同一条筛选条件，
+// 保证「看到的」和「删掉的」是同一批。
+export function buildPruneCodesSql() {
+  return 'DELETE FROM codes WHERE account_id IS NOT NULL AND used_at IS NULL;';
+}
+
+export function buildStaleCountSql() {
+  return 'SELECT COUNT(*) AS n FROM codes WHERE account_id IS NOT NULL AND used_at IS NULL;';
 }
 
 function run(sql, root) {
@@ -88,7 +110,18 @@ if (isMain) {
     run(buildResetPasswordSql(email, hash, salt), root);
     console.log(`已重置 ${email} 的密码`);
   } else if (cmd === 'codes') {
-    run(buildCodesSql(process.argv.includes('--unused')), root);
+    run(buildCodesSql(process.argv.includes('--unused'), process.argv.includes('--stale')), root);
+  } else if (cmd === 'prune-codes') {
+    if (process.argv.includes('--yes')) {
+      run(buildPruneCodesSql(), root);
+      console.log('已删除僵尸码（已绑定账号但从未激活的码）。');
+    } else {
+      // 不带 --yes 只查数、不删——取消过期机制后僵尸码只能靠人工清理，
+      // 误删一条就是误伤一个还没激活的真实用户，必须让负责人先看到数字再确认。
+      run(buildStaleCountSql(), root);
+      console.log('以上是将要删除的僵尸码条数（未真正删除）。确认无误后加 --yes 才会执行：');
+      console.log('  node tools/admin.mjs prune-codes --yes');
+    }
   } else {
     console.error([
       '用法：',
@@ -96,7 +129,8 @@ if (isMain) {
       '  node tools/admin.mjs disable <email>',
       '  node tools/admin.mjs enable <email>',
       '  node tools/admin.mjs reset-password <email> --password <新密码>',
-      '  node tools/admin.mjs codes [--unused]',
+      '  node tools/admin.mjs codes [--unused] [--stale]',
+      '  node tools/admin.mjs prune-codes [--yes]   # --stale 列表默认只查数，加 --yes 才真删',
     ].join('\n'));
     process.exit(1);
   }

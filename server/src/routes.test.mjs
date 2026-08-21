@@ -2,9 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { handleRegister, handleLogin } from './routes.js';
 import { hashPassword, signToken } from './crypto.js';
-import {
-  handleActivate, handleContentKey, handleRequestCode, CODE_TTL_MS,
-} from './routes.js';
+import { handleActivate, handleContentKey, handleRequestCode } from './routes.js';
 import { hashCode } from './codes.js';
 
 function req(body, ip = '1.1.1.1') {
@@ -288,15 +286,15 @@ test('disabled 账号提交合法未用码报 account_disabled 且码未被标�
   assert.equal(row.used_at, null);
 });
 
-// --- 卖码模式：注册当场绑定码到新账号，码 3 小时后过期 ---
+// --- 卖码模式：注册当场绑定码到新账号，码不设过期时间 ---
 
-test('注册当场生成码并绑定到刚建的账号，带 CODE_TTL_MS 有效期', async () => {
+test('注册当场生成码并绑定到刚建的账号，不设过期时间', async () => {
   const e = env();
   const res = await handleRegister(req({ email: 'a@b.com', password: 'rahasia123' }), e, 1000);
   const body = await res.json();
   assert.equal(e.DB.codes.length, 1);
   assert.equal(e.DB.codes[0].account_id, body.accountId);
-  assert.equal(e.DB.codes[0].expires_at, 1000 + CODE_TTL_MS);
+  assert.equal(e.DB.codes[0].expires_at, null);
 });
 
 test('卖码模式（AUTO_ISSUE_CODE=false）注册也生成并绑定码，但不把明文返回给注册者', async () => {
@@ -321,6 +319,16 @@ test('过期的码激活报 code_expired', async () => {
   assert.equal((await res.json()).error, 'code_expired');
 });
 
+test('新码没有过期时间，久置也能正常激活', async () => {
+  const e = env();
+  const { code, token } = await registerAndLogin(e);
+  // 隔了很久才激活（模拟负责人半夜没看到通知，用户第二天早上才拿到码）：
+  // 换算成很大的 now，老的 3 小时 TTL 早就会报 code_expired，新逻辑下应正常成功。
+  const res = await handleActivate(authReq(token, { code }), e, 999 * 3600_000);
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).status, 'active');
+});
+
 test('未绑定的码（issue-code.mjs 预生成的散码，无过期时间）仍可正常激活', async () => {
   const e = env();
   const { token } = await registerAndLogin(e);
@@ -341,15 +349,55 @@ test('request-code：pending 账号作废旧码、生成新码', async () => {
   const { token } = await registerAndLogin(e);
   assert.equal(e.DB.codes.length, 1);
   const oldHash = e.DB.codes[0].code_hash;
+  assert.equal(e.DB.codes[0].expires_at, null); // 作废前：新码本来就没有过期时间
   const res = await handleRequestCode(authReq(token, {}), e, 5000);
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true });
   assert.equal(e.DB.codes.length, 2);
   const oldRow = e.DB.codes.find((c) => c.code_hash === oldHash);
-  assert.equal(oldRow.expires_at, 0); // 旧码作废
+  assert.equal(oldRow.expires_at, 0); // 旧码作废：NULL（未过期）→ 0（已作废）
   const newRow = e.DB.codes.find((c) => c.code_hash !== oldHash);
   assert.equal(newRow.account_id, e.DB.accounts[0].id);
-  assert.equal(newRow.expires_at, 5000 + CODE_TTL_MS);
+  assert.equal(newRow.expires_at, null); // 新码同样不设过期时间
+});
+
+// 这是取消过期机制之后最容易出错的地方：新码 expires_at 默认是 NULL，
+// 重新申请时必须确认「作废」这个动作对 NULL 起点的码仍然有效——
+// 不能只看 db.js 层面的 UPDATE 有没有执行，要跑一遍真实的「作废后再激活」
+// 全流程，确认旧码激活失败、新码激活成功。
+test('重新申请后，旧码（原本 expires_at 为 NULL）激活必须失败，新码必须成功', async () => {
+  // handleRequestCode 的 JSON 响应不带明文码（卖码模式的常态：明文只进 Telegram
+  // 推送）。这里配上 Telegram 凭据、假 fetch 拦截推送请求体，把新码的明文从
+  // 消息文本里抠出来，才能真正走一遍「用新码激活」这条链路，而不是只看 DB 行。
+  const e = { ...env(), TELEGRAM_BOT_TOKEN: 'T', TELEGRAM_CHAT_ID: 'C' };
+  const { code: oldCode, token } = await registerAndLogin(e);
+
+  let pushedText = null;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    pushedText = JSON.parse(options.body).text;
+    return new Response('{"ok":true}', { status: 200 });
+  };
+  let reqRes;
+  try {
+    reqRes = await handleRequestCode(authReq(token, {}), e, 5000);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(reqRes.status, 200);
+  const newCode = pushedText.match(/激活码：([A-Z0-9-]+)/)[1];
+  assert.notEqual(newCode, oldCode);
+
+  // 旧码：绑定关系还在（account_id 没变），但已被作废，激活必须报 code_expired。
+  const oldRes = await handleActivate(authReq(token, { code: oldCode }), e, 6000);
+  assert.equal(oldRes.status, 410);
+  assert.equal((await oldRes.json()).error, 'code_expired');
+  assert.equal(e.DB.accounts[0].status, 'pending'); // 没有被旧码误激活
+
+  // 新码：expires_at 从 NULL 起步，激活必须成功。
+  const newRes = await handleActivate(authReq(token, { code: newCode }), e, 6000);
+  assert.equal(newRes.status, 200);
+  assert.equal((await newRes.json()).status, 'active');
 });
 
 test('request-code：active 账号直接返回 active，不生成新码', async () => {

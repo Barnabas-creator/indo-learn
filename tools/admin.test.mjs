@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildListSql, buildSetStatusSql, buildResetPasswordSql, buildCodesSql,
+  buildPruneCodesSql, buildStaleCountSql,
 } from './admin.mjs';
 
 test('list 不带关键字时查全部账号，只选安全字段', () => {
@@ -57,4 +58,26 @@ test('codes 默认列出全部，只截取哈希前 8 位', () => {
 test('codes --unused 只筛未绑定账号的码', () => {
   const sql = buildCodesSql(true);
   assert.match(sql, /WHERE account_id IS NULL/);
+});
+
+test('codes --stale 只筛已绑定账号但从未激活的僵尸码', () => {
+  const sql = buildCodesSql(false, true);
+  assert.match(sql, /WHERE account_id IS NOT NULL AND used_at IS NULL/);
+});
+
+test('--stale 优先于 --unused（两者语义互斥，stale 更具体）', () => {
+  const sql = buildCodesSql(true, true);
+  assert.match(sql, /WHERE account_id IS NOT NULL AND used_at IS NULL/);
+  assert.doesNotMatch(sql, /account_id IS NULL ORDER/);
+});
+
+test('prune-codes 生成删除僵尸码的 DELETE，条件与 --stale 一致', () => {
+  const sql = buildPruneCodesSql();
+  assert.equal(sql, 'DELETE FROM codes WHERE account_id IS NOT NULL AND used_at IS NULL;');
+});
+
+test('prune-codes 不带 --yes 时用的计数 SQL，只查数不删', () => {
+  const sql = buildStaleCountSql();
+  assert.match(sql, /^SELECT COUNT\(\*\) AS n FROM codes WHERE account_id IS NOT NULL AND used_at IS NULL;$/);
+  assert.doesNotMatch(sql, /DELETE/);
 });

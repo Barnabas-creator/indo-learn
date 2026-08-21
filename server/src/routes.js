@@ -19,9 +19,6 @@ export const REGISTER_RATE_WINDOW_MS = 3600000; // 1 小时
 export const REQUEST_CODE_RATE_LIMIT = 3;
 export const REQUEST_CODE_RATE_WINDOW_MS = 3600000; // 1 小时
 const MIN_PASSWORD = 8;
-// 卖码模式下，码在 3 小时内不激活就失效——负责人可能没及时看到 Telegram 通知，
-// 留出更宽裕的窗口；万一还是错过，也还留了「重新申请」入口（见 handleRequestCode）。
-export const CODE_TTL_MS = 3 * 3600_000;
 
 export function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -50,15 +47,8 @@ async function readJson(request) {
   }
 }
 
-// 给负责人看的到期时间，用雅加达时区（WIB，服务器本身跑在边缘节点，本地时间不可靠）。
-function formatDeadline(ts) {
-  return new Intl.DateTimeFormat('zh-CN', {
-    timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', hour12: false,
-  }).format(new Date(ts));
-}
-
-function codeMessage(title, { email, code, expiresAt }) {
-  return `${title}\n\n邮箱：${email}\n激活码：${code}\n有效期：3 小时（到 ${formatDeadline(expiresAt)} 前未激活将失效）`;
+function codeMessage(title, { email, code }) {
+  return `${title}\n\n邮箱：${email}\n激活码：${code}\n此码长期有效，直到被使用。`;
 }
 
 export async function handleRegister(request, env, now = Date.now()) {
@@ -77,13 +67,16 @@ export async function handleRegister(request, env, now = Date.now()) {
   const accountId = await createAccount(env.DB, { email: mail, hash, salt, now });
 
   // 卖码模式起：注册当场就生成一张码并直接绑定到这个新账号——不再等激活时才绑，
-  // 保证「一张码只能激活它所属的那个账号」。3 小时内不激活就失效。
+  // 保证「一张码只能激活它所属的那个账号」。
+  // 不设过期时间：激活必须先登录（有效令牌）+ 码本身从一开始就绑死这个账号，
+  // 过期时间挡不住任何实际威胁（能被它挡住的场景早被这两道锁挡住了），
+  // 却会把「负责人半夜没看到 Telegram、码睡一觉就废了」的代价转嫁给用户。
+  // 僵尸码（绑了账号但一直没激活）由负责人用 tools/admin.mjs 定期清理，见 README。
   const code = generateCode();
-  const expiresAt = now + CODE_TTL_MS;
   await insertCode(env.DB, {
-    codeHash: await hashCode(code), accountId, now, expiresAt,
+    codeHash: await hashCode(code), accountId, now, expiresAt: null,
   });
-  await notifyOwner(env, codeMessage('🔑 新注册待激活', { email: mail, code, expiresAt }));
+  await notifyOwner(env, codeMessage('🔑 新注册待激活', { email: mail, code }));
 
   // 自动发码模式（自己人用）：明文码同时也直接返回给前端。
   // 关掉自动发码（卖码模式）：不把明文码给注册者本人，只推给负责人，
@@ -136,8 +129,12 @@ export async function handleActivate(request, env, now = Date.now()) {
   if (row.account_id !== null && row.account_id !== account.id) {
     return json({ error: 'code_used' }, 409);
   }
-  // 未绑定的码（account_id 为 NULL）来自 tools/issue-code.mjs 预先批量生成的散码，
-  // 没有过期时间，仍按老规则允许绑定到当前账号——保持兼容。
+  // 这条校验本身没有删：新码（/register、/request-code 生成的）不再带过期时间
+  // （expires_at 为 NULL，直接跳过下面的判断），但库里还留着一批取消过期之前
+  // 发出的旧码（30 分钟版、3 小时版），它们的 expires_at 是具体时间戳，到期
+  // 后仍应报 code_expired——不然等于悄悄放行了本该失效的旧码。
+  // 另外，expireCodesOfAccount 把「重新申请」时作废的旧码 expires_at 置成 0，
+  // 0 同样小于 now，会命中这里——这是「作废」赖以生效的机制，见 db.js 里的注释。
   if (row.expires_at !== null && row.expires_at !== undefined && row.expires_at < now) {
     return json({ error: 'code_expired' }, 410);
   }
@@ -159,13 +156,13 @@ export async function handleRequestCode(request, env, now = Date.now()) {
   if (account.status === 'active') return json({ ok: true, status: 'active' });
 
   // 负责人可能在睡觉：作废这个账号名下所有还没用过的旧码，生成新码重新推送。
+  // 新码同样不设过期时间（理由见 handleRegister 里的注释）。
   await expireCodesOfAccount(env.DB, { accountId: account.id });
   const code = generateCode();
-  const expiresAt = now + CODE_TTL_MS;
   await insertCode(env.DB, {
-    codeHash: await hashCode(code), accountId: account.id, now, expiresAt,
+    codeHash: await hashCode(code), accountId: account.id, now, expiresAt: null,
   });
-  await notifyOwner(env, codeMessage('🔄 重新申请激活码', { email: account.email, code, expiresAt }));
+  await notifyOwner(env, codeMessage('🔄 重新申请激活码', { email: account.email, code }));
   return json({ ok: true });
 }
 

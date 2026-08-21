@@ -154,6 +154,14 @@ test('renderCodePending 显示管理员邮箱与 mailto 链接', () => {
   assert.match(root.innerHTML, new RegExp(ADMIN_EMAIL));
 });
 
+test('renderCodePending 提示码长期有效，且指向「重新申请激活码」入口', () => {
+  const root = fakeRoot();
+  renderCodePending(root, { email: 'a@b.com', adminContact: ADMIN_EMAIL, onNext() {} });
+  assert.match(root.innerHTML, /激活码长期有效/);
+  assert.match(root.innerHTML, /重新申请激活码/);
+  assert.doesNotMatch(root.innerHTML, /3 ?小时/);
+});
+
 test('renderActivate 在重新申请按钮附近显示管理员邮箱与 mailto 链接', () => {
   const root = fakeRoot();
   renderActivate(root, {

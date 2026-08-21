@@ -38,8 +38,14 @@ export function findCode(db, codeHash) {
     .first();
 }
 
-// 重新申请激活码时，把这个账号名下所有还没用过的码作废（expires_at 设成 0，
-// 即公元纪元，任何后续的「是否过期」判断都会命中）——不删行，留痕方便排障。
+// 重新申请激活码时，把这个账号名下所有还没用过的码作废。
+//
+// 取消过期机制之后，新码的 expires_at 从 NULL 起步（“NULL = 永不过期”），
+// 这里仍然沿用「置成 0」的老办法：0（公元纪元）本身就小于任何 now，
+// routes.js 里判断是否过期的那句 `expires_at < now` 原封不动地会命中它——
+// 相当于借用了同一条过期校验来表达「已作废」，NULL（未过期）与 0（已作废）
+// 是两个不同的状态，不会混淆。没有另开一列（比如 revoked_at）是因为这条
+// 判断已经够用、够明确，加列纯属多余。作废后不删行，留痕方便排障。
 export async function expireCodesOfAccount(db, { accountId }) {
   await db
     .prepare('UPDATE codes SET expires_at = 0 WHERE account_id = ? AND used_at IS NULL')
