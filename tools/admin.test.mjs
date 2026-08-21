@@ -2,12 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildListSql, buildSetStatusSql, buildResetPasswordSql, buildCodesSql,
-  buildPruneCodesSql, buildStaleCountSql,
+  buildPruneCodesSql, buildStaleCountSql, buildGrantTrialSql,
 } from './admin.mjs';
 
-test('list 不带关键字时查全部账号，只选安全字段', () => {
+test('list 不带关键字时查全部账号，只选安全字段，含 status 与 trial_ends_at', () => {
   const sql = buildListSql();
-  assert.equal(sql, 'SELECT id, email, status, created_at FROM accounts ORDER BY id;');
+  assert.equal(sql, 'SELECT id, email, status, trial_ends_at, created_at FROM accounts ORDER BY id;');
   assert.doesNotMatch(sql, /password_hash|salt/);
 });
 
@@ -80,4 +80,16 @@ test('prune-codes 不带 --yes 时用的计数 SQL，只查数不删', () => {
   const sql = buildStaleCountSql();
   assert.match(sql, /^SELECT COUNT\(\*\) AS n FROM codes WHERE account_id IS NOT NULL AND used_at IS NULL;$/);
   assert.doesNotMatch(sql, /DELETE/);
+});
+
+// --- grant-trial：手动把账号设成 trial 并延长/补发试用期 ---
+
+test('grant-trial 生成把 status 改为 trial、写入 trial_ends_at 的 UPDATE', () => {
+  const sql = buildGrantTrialSql('a@b.com', 1700000000000);
+  assert.equal(sql, "UPDATE accounts SET status = 'trial', trial_ends_at = 1700000000000 WHERE email = 'a@b.com';");
+});
+
+test('grant-trial 的邮箱带单引号时会被转义', () => {
+  const sql = buildGrantTrialSql("o'reilly@b.com", 1700000000000);
+  assert.match(sql, /WHERE email = 'o''reilly@b\.com'/);
 });

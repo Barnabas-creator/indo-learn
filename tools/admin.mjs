@@ -17,6 +17,7 @@
 //   node tools/admin.mjs reset-password <email> --password <新密码>
 //   node tools/admin.mjs codes [--unused] [--stale]
 //   node tools/admin.mjs prune-codes [--yes]
+//   node tools/admin.mjs grant-trial <email> --days <N>   # 补/延长试用期，账号变 trial 状态
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -24,16 +25,24 @@ import { hashPassword } from '../server/src/crypto.js';
 
 const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
 
-// list：只选 id/email/status/created_at，绝不选 password_hash / salt。
+// list：只选 id/email/status/trial_ends_at/created_at，绝不选 password_hash / salt。
 export function buildListSql(emailLike) {
+  const cols = 'id, email, status, trial_ends_at, created_at';
   if (emailLike) {
-    return `SELECT id, email, status, created_at FROM accounts WHERE email LIKE ${q(`%${emailLike}%`)} ORDER BY id;`;
+    return `SELECT ${cols} FROM accounts WHERE email LIKE ${q(`%${emailLike}%`)} ORDER BY id;`;
   }
-  return 'SELECT id, email, status, created_at FROM accounts ORDER BY id;';
+  return `SELECT ${cols} FROM accounts ORDER BY id;`;
 }
 
 export function buildSetStatusSql(email, status) {
   return `UPDATE accounts SET status = ${q(status)} WHERE email = ${q(email)};`;
+}
+
+// grant-trial：手动把账号设成 trial 并把到期时间延到 now + days 天——用于给老账号
+// 补一段试用，或者负责人想手动延长某个用户的试用期。days 由调用方（CLI 层）校验为正整数，
+// 这里只管拼 SQL；trialEndsAt 是算好的绝对时间戳（毫秒），跟服务端 TRIAL_MS 的算法一致。
+export function buildGrantTrialSql(email, trialEndsAt) {
+  return `UPDATE accounts SET status = 'trial', trial_ends_at = ${Number(trialEndsAt)} WHERE email = ${q(email)};`;
 }
 
 export function buildResetPasswordSql(email, hash, salt) {
@@ -111,6 +120,17 @@ if (isMain) {
     console.log(`已重置 ${email} 的密码`);
   } else if (cmd === 'codes') {
     run(buildCodesSql(process.argv.includes('--unused'), process.argv.includes('--stale')), root);
+  } else if (cmd === 'grant-trial') {
+    const email = positional(1);
+    const daysArg = flag('--days');
+    const days = Number(daysArg);
+    if (!email || !daysArg || !Number.isFinite(days) || days <= 0) {
+      console.error('缺参数或天数不对。用法：node tools/admin.mjs grant-trial <email> --days <N>');
+      process.exit(1);
+    }
+    const trialEndsAt = Date.now() + days * 86400_000;
+    run(buildGrantTrialSql(email, trialEndsAt), root);
+    console.log(`已把 ${email} 设为 trial，试用到期时间：${new Date(trialEndsAt).toISOString()}`);
   } else if (cmd === 'prune-codes') {
     if (process.argv.includes('--yes')) {
       run(buildPruneCodesSql(), root);
@@ -131,6 +151,7 @@ if (isMain) {
       '  node tools/admin.mjs reset-password <email> --password <新密码>',
       '  node tools/admin.mjs codes [--unused] [--stale]',
       '  node tools/admin.mjs prune-codes [--yes]   # --stale 列表默认只查数，加 --yes 才真删',
+      '  node tools/admin.mjs grant-trial <email> --days <N>   # 补/延长试用期',
     ].join('\n'));
     process.exit(1);
   }
