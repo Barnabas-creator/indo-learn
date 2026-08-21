@@ -6,10 +6,10 @@ import { renderDialogList, renderDialog } from './lib/views/dialogs.js';
 import { renderGrammarList, renderGrammarModule } from './lib/views/grammar.js';
 import { renderUnlock } from './lib/views/unlock.js';
 import {
-  renderLogin, renderRegister, renderCodeIssued, renderCodePending, renderActivate, AUTH_ERRORS,
+  renderLogin, renderRegister, renderActivate, AUTH_ERRORS, escapeHtml,
 } from './lib/views/auth.js';
 import { AUTH_MODE, ADMIN_CONTACT } from './lib/config.js';
-import { normalizeEmail } from './lib/remote-provider.js';
+import { normalizeEmail, trialDaysLeft } from './lib/remote-provider.js';
 import { LEVELS, PACKS } from './lib/catalog.js';
 
 export function start(root, provider, tts) {
@@ -20,6 +20,10 @@ export function start(root, provider, tts) {
   let detailId = null; // 对话/语法的详情 id
   let wordsByPack = {}; // 解锁后的词条表 { 包id: [词条…] }，只在内存
   let sessionEmail = null; // 当前登录邮箱，用来校验暂存激活码是不是同一个账号的
+  // 试用横幅要用：账号状态与试用到期时间。只有 status === 'trial' 且未过期才显示横幅，
+  // 激活成功后 status 变 active，横幅自然消失（下一次 render 就不会再画它）。
+  let accountStatus = null;
+  let accountTrialEndsAt = null;
 
   function showUnlock(error = '', busy = false) {
     renderUnlock(root, {
@@ -40,11 +44,10 @@ export function start(root, provider, tts) {
 
   const msg = (err) => AUTH_ERRORS[err?.message] ?? AUTH_ERRORS.default;
 
-  // 注册成功但自动登录失败时，激活码不能跟着丢：单独存一份，
-  // 激活成功后才清掉，刷新页面/重开浏览器也能在激活页找回来。
+  // 试用模式下注册不再当场发码给用户（码攥在负责人手里），这套暂存机制原本是给
+  // 「注册成功但自动登录失败」兜底用的，现在没有写入方了；留着读取/清除两个函数
+  // 是为了兼容注册即送试用上线前，浏览器里可能还没清掉的旧暂存记录。
   const PENDING_CODE_KEY = 'indo-learn-pending-code';
-  const savePendingCode = (email, code) =>
-    localStorage.setItem(PENDING_CODE_KEY, JSON.stringify({ email: normalizeEmail(email), code }));
   const readPendingCode = () => {
     try {
       return JSON.parse(localStorage.getItem(PENDING_CODE_KEY));
@@ -62,9 +65,11 @@ export function start(root, provider, tts) {
       onSubmit: async (email, password) => {
         showLogin('', true);
         try {
-          const { status } = await provider.login(email, password);
+          const { status, trialEndsAt } = await provider.login(email, password);
           sessionEmail = normalizeEmail(email);
-          if (status === 'active') {
+          accountStatus = status;
+          accountTrialEndsAt = trialEndsAt;
+          if (status === 'active' || status === 'trial') {
             wordsByPack = await provider.getPacks();
             render();
           } else {
@@ -85,25 +90,20 @@ export function start(root, provider, tts) {
       onSubmit: async (email, password) => {
         showRegister('', true);
         try {
-          const out = await provider.register(email, password);
-          const afterCodeSeen = async () => {
-            try {
-              await provider.login(email, password);
-              sessionEmail = normalizeEmail(email);
-              showActivate();
-            } catch (err) {
-              showLogin(msg(err));
-            }
-          };
-          if (out.code) {
-            // 自己人模式：明文码当场发给注册者，先把码亮出来、存到本地，再去登录——
-            // 账号和码在服务端已经生成好了，后面 login() 哪怕失败也不能让用户连码都没看到就卡死。
-            savePendingCode(email, out.code);
-            renderCodeIssued(root, { code: out.code, onNext: afterCodeSeen });
+          // 注册即送 7 天全量试用：服务端已经把账号建成 trial 状态，不用再等码、
+          // 不用先经过「显示码/待发放提示 → 激活页」，登录一次直接进首页。
+          // 激活码这时候攥在负责人手里，付费后从首页横幅的「输入激活码」入口进激活页再输。
+          await provider.register(email, password);
+          const { status, trialEndsAt } = await provider.login(email, password);
+          sessionEmail = normalizeEmail(email);
+          accountStatus = status;
+          accountTrialEndsAt = trialEndsAt;
+          if (status === 'active' || status === 'trial') {
+            wordsByPack = await provider.getPacks();
+            render();
           } else {
-            // 卖码模式：码已经在注册时生成并推给了管理员，注册者本人看不到明文，
-            // 没有码可暂存——提示去联系管理员，拿到码后自己点「去激活」。
-            renderCodePending(root, { email, adminContact: ADMIN_CONTACT, onNext: afterCodeSeen });
+            // 兜底：万一服务端某天又开始产出非试用的 pending 账号，仍然走原来的激活页。
+            showActivate();
           }
         } catch (err) {
           showRegister(msg(err));
@@ -131,7 +131,9 @@ export function start(root, provider, tts) {
       onSubmit: async (typed) => {
         showActivate('', true, typed);
         try {
-          await provider.activate(typed);
+          const { status, trialEndsAt } = await provider.activate(typed);
+          accountStatus = status;
+          accountTrialEndsAt = trialEndsAt;
           clearPendingCode();
           wordsByPack = await provider.getPacks();
           render();
@@ -186,9 +188,27 @@ export function start(root, provider, tts) {
     });
   }
 
+  // 试用横幅：status === 'trial' 且未过期时，在 mount() 画的每个主界面顶部都带上。
+  // 放在 mount() 里统一渲染是改动最小的做法——只有登录/注册/激活三个视图不走 mount()，
+  // 它们本来就不该出现横幅（还没登录，或正在输码）。
+  function renderTrialBanner(container) {
+    if (accountStatus !== 'trial') return;
+    const days = trialDaysLeft(accountTrialEndsAt);
+    if (days <= 0) return; // 本地算出来已经过期：下一次请求会被服务端拒绝并清会话，这里先不画横幅
+    const banner = document.createElement('div');
+    banner.className = 'trial-banner';
+    banner.innerHTML = `
+      <span class="trial-banner-text">试用中，还剩 ${days} 天 · 购买完整版请联系
+        <a href="mailto:${escapeHtml(ADMIN_CONTACT)}">${escapeHtml(ADMIN_CONTACT)}</a></span>
+      <button type="button" class="trial-banner-btn">输入激活码</button>`;
+    banner.querySelector('.trial-banner-btn').addEventListener('click', () => showActivate());
+    container.append(banner);
+  }
+
   function mount(fn) {
     const main = document.createElement('div');
     root.innerHTML = '';
+    renderTrialBanner(root);
     root.append(main);
     fn(main);
   }
@@ -331,8 +351,12 @@ export function start(root, provider, tts) {
       render();
     } catch (err) {
       if (FATAL_CONTENT_ERRORS.has(err?.message)) {
+        // 走到这里时 session 多半已经被 refreshKey() 清掉了（见上面注释）；
+        // 试用到期是其中一种具体原因，登录页要给专门文案，别的原因沿用旧提示。
+        const reason = provider.lastRevokeReason ? provider.lastRevokeReason() : null;
         provider.lock();
-        return AUTH_MODE === 'remote' ? showLogin() : showUnlock('内容已更新，请重新输入密码');
+        if (AUTH_MODE !== 'remote') return showUnlock('内容已更新，请重新输入密码');
+        return showLogin(reason === 'trial_expired' ? AUTH_ERRORS.trial_expired : '');
       }
       showContentRetry();
     }
@@ -347,10 +371,17 @@ export function start(root, provider, tts) {
 
   (async () => {
     try {
-      const { unlocked, status, email } = await provider.init();
+      const { unlocked, status, email, trialEndsAt } = await provider.init();
       sessionEmail = email ? normalizeEmail(email) : null; // provider 已归一化，这里再做一次保险，防旧会话数据是原样存的
+      accountStatus = status;
+      accountTrialEndsAt = trialEndsAt ?? null;
       if (!unlocked) {
         if (AUTH_MODE !== 'remote') return showUnlock();
+        // 试用到期是本地时钟一到点就地清会话的（remote-provider.js 的 init() 里），
+        // 也可能是刷新密钥时服务端刚拒绝的——两种情况 lastRevokeReason() 都会给出
+        // 'trial_expired'，登录页要展示专门的文案，不能跟普通的「请重新登录」混在一起。
+        const reason = provider.lastRevokeReason ? provider.lastRevokeReason() : null;
+        if (reason === 'trial_expired') return showLogin(AUTH_ERRORS.trial_expired);
         return status === 'pending' ? showActivate() : showLogin();
       }
       await loadPacksAfterUnlock();

@@ -19,7 +19,7 @@ test('每个服务端错误码都有中文文案', () => {
     'invalid_email', 'weak_password', 'email_taken', 'bad_credentials',
     'account_disabled', 'bad_code', 'code_used', 'code_expired', 'too_many_attempts',
     'unauthorized', 'not_activated', 'no_content_key', 'server_error',
-    'content_outdated',
+    'content_outdated', 'trial_expired',
   ]) {
     assert.ok(AUTH_ERRORS[code], `缺 ${code} 的文案`);
   }
