@@ -288,9 +288,9 @@ test('disabled 账号提交合法未用码报 account_disabled 且码未被标�
   assert.equal(row.used_at, null);
 });
 
-// --- 卖码模式：注册当场绑定码到新账号，码 30 分钟后过期 ---
+// --- 卖码模式：注册当场绑定码到新账号，码 3 小时后过期 ---
 
-test('注册当场生成码并绑定到刚建的账号，带 30 分钟有效期', async () => {
+test('注册当场生成码并绑定到刚建的账号，带 CODE_TTL_MS 有效期', async () => {
   const e = env();
   const res = await handleRegister(req({ email: 'a@b.com', password: 'rahasia123' }), e, 1000);
   const body = await res.json();

@@ -19,9 +19,9 @@ export const REGISTER_RATE_WINDOW_MS = 3600000; // 1 小时
 export const REQUEST_CODE_RATE_LIMIT = 3;
 export const REQUEST_CODE_RATE_WINDOW_MS = 3600000; // 1 小时
 const MIN_PASSWORD = 8;
-// 卖码模式下，码在 30 分钟内不激活就失效——负责人可能在睡觉，
-// 所以还留了「重新申请」入口（见 handleRequestCode）。
-export const CODE_TTL_MS = 30 * 60_000;
+// 卖码模式下，码在 3 小时内不激活就失效——负责人可能没及时看到 Telegram 通知，
+// 留出更宽裕的窗口；万一还是错过，也还留了「重新申请」入口（见 handleRequestCode）。
+export const CODE_TTL_MS = 3 * 3600_000;
 
 export function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -58,7 +58,7 @@ function formatDeadline(ts) {
 }
 
 function codeMessage(title, { email, code, expiresAt }) {
-  return `${title}\n\n邮箱：${email}\n激活码：${code}\n有效期：30 分钟（到 ${formatDeadline(expiresAt)} 前未激活将失效）`;
+  return `${title}\n\n邮箱：${email}\n激活码：${code}\n有效期：3 小时（到 ${formatDeadline(expiresAt)} 前未激活将失效）`;
 }
 
 export async function handleRegister(request, env, now = Date.now()) {
@@ -77,7 +77,7 @@ export async function handleRegister(request, env, now = Date.now()) {
   const accountId = await createAccount(env.DB, { email: mail, hash, salt, now });
 
   // 卖码模式起：注册当场就生成一张码并直接绑定到这个新账号——不再等激活时才绑，
-  // 保证「一张码只能激活它所属的那个账号」。30 分钟内不激活就失效。
+  // 保证「一张码只能激活它所属的那个账号」。3 小时内不激活就失效。
   const code = generateCode();
   const expiresAt = now + CODE_TTL_MS;
   await insertCode(env.DB, {

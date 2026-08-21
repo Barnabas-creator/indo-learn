@@ -8,7 +8,7 @@ import { renderUnlock } from './lib/views/unlock.js';
 import {
   renderLogin, renderRegister, renderCodeIssued, renderCodePending, renderActivate, AUTH_ERRORS,
 } from './lib/views/auth.js';
-import { AUTH_MODE } from './lib/config.js';
+import { AUTH_MODE, ADMIN_CONTACT } from './lib/config.js';
 import { normalizeEmail } from './lib/remote-provider.js';
 import { LEVELS, PACKS } from './lib/catalog.js';
 
@@ -103,7 +103,7 @@ export function start(root, provider, tts) {
           } else {
             // 卖码模式：码已经在注册时生成并推给了管理员，注册者本人看不到明文，
             // 没有码可暂存——提示去联系管理员，拿到码后自己点「去激活」。
-            renderCodePending(root, { email, onNext: afterCodeSeen });
+            renderCodePending(root, { email, adminContact: ADMIN_CONTACT, onNext: afterCodeSeen });
           }
         } catch (err) {
           showRegister(msg(err));
@@ -126,6 +126,7 @@ export function start(root, provider, tts) {
       busy,
       code,
       notice,
+      adminContact: ADMIN_CONTACT,
       onLogout: () => { clearPendingCode(); sessionEmail = null; provider.lock(); showLogin(); },
       onSubmit: async (typed) => {
         showActivate('', true, typed);

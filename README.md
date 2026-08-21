@@ -132,7 +132,7 @@ export $(cat ~/.cloudflare-token) && npx wrangler d1 execute indo-learn --remote
 
 `server/wrangler.toml` 的 `[vars] AUTO_ISSUE_CODE` 控制，改了要 `npx wrangler deploy` 重新部署。
 **两种模式下 `/register` 都会当场生成一张码、直接绑定到刚建的账号**（一张码只能激活它
-所属的那个账号），码 30 分钟内不激活就失效，且**都会推送到负责人的 Telegram**
+所属的那个账号），码 3 小时内不激活就失效，且**都会推送到负责人的 Telegram**
 （见下面「Telegram 通知配置」）；区别只在于明文码是否也直接返回给注册者本人：
 
 - `"true"`（前期，自己人用）：`/register` 响应里带明文码，注册页直接显示 + 提供
@@ -152,9 +152,9 @@ export $(cat ~/.cloudflare-token) && npx wrangler d1 execute indo-learn --remote
 
 ### 待激活用户拿不到码怎么办：`POST /request-code`
 
-负责人可能在睡觉，注册者不能干等 30 分钟码过期。激活页有「重新申请激活码」按钮，
+负责人可能没及时看到通知，注册者不能干等 3 小时码过期。激活页有「重新申请激活码」按钮，
 调 `POST /request-code`（需要 Bearer 令牌）：账号还是 `pending` 状态时，作废该账号名下
-所有未使用的旧码，生成一张新码（30 分钟有效）重新绑定 + 推送 Telegram；账号已经是
+所有未使用的旧码，生成一张新码（3 小时有效）重新绑定 + 推送 Telegram；账号已经是
 `active` 直接返回 `{ok:true, status:'active'}`；`disabled` 账号返回 403。限流：同一 IP
 每小时最多 3 次。
 

@@ -142,3 +142,23 @@ test('激活视图的 notice 被转义，不含未转义的 <script>', () => {
   assert.doesNotMatch(root.innerHTML, /<script>x<\/script>/);
   assert.match(root.innerHTML, /&lt;script&gt;/);
 });
+
+// --- 卖码模式：页面上写明管理员联系方式（邮箱从 lib/config.js 传入，视图不写死） ---
+
+const ADMIN_EMAIL = 'barnabas7223@gmail.com';
+
+test('renderCodePending 显示管理员邮箱与 mailto 链接', () => {
+  const root = fakeRoot();
+  renderCodePending(root, { email: 'a@b.com', adminContact: ADMIN_EMAIL, onNext() {} });
+  assert.match(root.innerHTML, new RegExp(`href="mailto:${ADMIN_EMAIL}"`));
+  assert.match(root.innerHTML, new RegExp(ADMIN_EMAIL));
+});
+
+test('renderActivate 在重新申请按钮附近显示管理员邮箱与 mailto 链接', () => {
+  const root = fakeRoot();
+  renderActivate(root, {
+    onSubmit() {}, onLogout() {}, onRequestCode() {}, adminContact: ADMIN_EMAIL,
+  });
+  assert.match(root.innerHTML, new RegExp(`href="mailto:${ADMIN_EMAIL}"`));
+  assert.match(root.innerHTML, new RegExp(ADMIN_EMAIL));
+});
