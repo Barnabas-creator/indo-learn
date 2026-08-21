@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { handleRegister, handleLogin } from './routes.js';
+import { handleRegister, handleLogin, TRIAL_MS } from './routes.js';
 import { hashPassword, signToken } from './crypto.js';
 import { handleActivate, handleContentKey, handleRequestCode } from './routes.js';
 import { hashCode } from './codes.js';
@@ -45,9 +45,11 @@ function memDb() {
         },
         async run() {
           if (/INSERT INTO accounts/.test(sql)) {
-            const [email, password_hash, salt, status, created_at] = stmt.args;
+            const [email, password_hash, salt, status, trial_ends_at, created_at] = stmt.args;
             const id = accounts.length + 1;
-            accounts.push({ id, email, password_hash, salt, status, created_at });
+            accounts.push({
+              id, email, password_hash, salt, status, trial_ends_at, created_at,
+            });
             return { meta: { last_row_id: id } };
           }
           if (/INSERT INTO codes/.test(sql)) {
@@ -115,13 +117,25 @@ test('邮箱格式不对报 invalid_email', async () => {
   assert.equal((await res.json()).error, 'invalid_email');
 });
 
-test('登录成功返回令牌与状态', async () => {
+test('登录成功返回令牌与状态（注册即送试用，新账号状态是 trial）', async () => {
   const e = env();
-  await handleRegister(req({ email: 'a@b.com', password: 'rahasia123' }), e);
-  const res = await handleLogin(req({ email: 'a@b.com', password: 'rahasia123' }), e);
+  await handleRegister(req({ email: 'a@b.com', password: 'rahasia123' }), e, 1000);
+  const res = await handleLogin(req({ email: 'a@b.com', password: 'rahasia123' }), e, 1000);
   const body = await res.json();
   assert.ok(body.token);
-  assert.equal(body.status, 'pending');
+  assert.equal(body.status, 'trial');
+  assert.equal(body.trialEndsAt, 1000 + TRIAL_MS);
+});
+
+test('试用已过期的账号登录仍应成功（不该被误导成密码不对，过期与否由 /content-key 判定）', async () => {
+  const e = env();
+  await handleRegister(req({ email: 'a@b.com', password: 'rahasia123' }), e, 1000);
+  e.DB.accounts[0].trial_ends_at = 500; // 手动改成过去的时间戳，模拟试用已过期
+  const res = await handleLogin(req({ email: 'a@b.com', password: 'rahasia123' }), e, 999999);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.ok(body.token);
+  assert.equal(body.status, 'trial');
 });
 
 test('密码错报 bad_credentials', async () => {
@@ -230,24 +244,82 @@ test('没令牌取密钥报 unauthorized', async () => {
   assert.equal((await res.json()).error, 'unauthorized');
 });
 
-test('未激活账号取密钥报 not_activated', async () => {
+// pending 账号（老式 issue-code.mjs 散码流程，或试用到期后管理员手动改回）取密钥仍报 not_activated。
+// 注册流程本身不再产出 pending 账号（新账号一律 trial），这里手动把状态改回 pending 来测这条分支。
+test('pending 账号取密钥报 not_activated', async () => {
   const e = env();
   const { token } = await registerAndLogin(e);
+  e.DB.accounts[0].status = 'pending';
+  e.DB.accounts[0].trial_ends_at = null;
   const res = await handleContentKey(authReq(token), e);
   assert.equal(res.status, 403);
   assert.equal((await res.json()).error, 'not_activated');
 });
 
-test('已激活账号能取到内容密钥', async () => {
+test('已激活账号能取到内容密钥，expiresAt 是 30 天后（不受试用限制）', async () => {
   const e = env();
   const { code, token } = await registerAndLogin(e);
   await handleActivate(authReq(token, { code }), e);
   e.DB.contentKey = { version: 'v5', cek: 'KUNCI' };
-  const res = await handleContentKey(authReq(token), e);
+  const res = await handleContentKey(authReq(token), e, 1000);
   const body = await res.json();
   assert.equal(body.cek, 'KUNCI');
   assert.equal(body.contentVersion, 'v5');
-  assert.ok(body.expiresAt > Date.now());
+  assert.equal(body.expiresAt, 1000 + 30 * 86400_000);
+  assert.equal(body.trialEndsAt, null);
+});
+
+// --- 注册即送 7 天试用：/content-key 对 trial 状态的放行/拦截 ---
+
+test('试用未过期能取到密钥，expiresAt 截断到 trial_ends_at（不是 30 天后）', async () => {
+  const e = env();
+  const reg = await (await handleRegister(req({ email: 'a@b.com', password: 'rahasia123' }), e, 1000)).json();
+  const log = await (await handleLogin(req({ email: 'a@b.com', password: 'rahasia123' }), e, 1000)).json();
+  e.DB.contentKey = { version: 'v5', cek: 'KUNCI' };
+  const res = await handleContentKey(authReq(log.token), e, 2000);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.cek, 'KUNCI');
+  assert.equal(body.trialEndsAt, reg.trialEndsAt);
+  // 关键：截断到试用到期时间，不是 now + 30 天——否则缓存一把 30 天的钥匙就能离线用满 30 天。
+  assert.equal(body.expiresAt, reg.trialEndsAt);
+  assert.ok(body.expiresAt < 2000 + 30 * 86400_000);
+});
+
+test('试用已过期取密钥返回 403 trial_expired', async () => {
+  const e = env();
+  const { token } = await registerAndLogin(e);
+  e.DB.accounts[0].trial_ends_at = 500; // 手动改成过去的时间戳
+  const res = await handleContentKey(authReq(token), e, 999999);
+  assert.equal(res.status, 403);
+  assert.equal((await res.json()).error, 'trial_expired');
+});
+
+test('disabled 的试用账号取密钥仍报 account_disabled，不是 trial_expired', async () => {
+  const e = env();
+  const { token } = await registerAndLogin(e);
+  e.DB.accounts[0].trial_ends_at = 500; // 试用也已过期
+  e.DB.accounts[0].status = 'disabled';
+  const res = await handleContentKey(authReq(token), e, 999999);
+  assert.equal(res.status, 403);
+  assert.equal((await res.json()).error, 'account_disabled');
+});
+
+test('试用账号用码激活后变 active，此后取密钥不再受试用期限制', async () => {
+  const e = env();
+  const { code, token } = await registerAndLogin(e);
+  e.DB.accounts[0].trial_ends_at = 500; // 试用早就过期了
+  const activateRes = await handleActivate(authReq(token, { code }), e, 999999);
+  assert.equal(activateRes.status, 200);
+  assert.equal((await activateRes.json()).status, 'active');
+  assert.equal(e.DB.accounts[0].status, 'active');
+
+  e.DB.contentKey = { version: 'v5', cek: 'KUNCI' };
+  const res = await handleContentKey(authReq(token), e, 999999);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.cek, 'KUNCI');
+  assert.equal(body.expiresAt, 999999 + 30 * 86400_000); // 不再截断到早已过期的 trial_ends_at
 });
 
 test('已激活账号重复用自己的码仍成功（幂等）', async () => {
@@ -342,9 +414,28 @@ test('未绑定的码（issue-code.mjs 预生成的散码，无过期时间）�
   assert.equal((await res.json()).status, 'active');
 });
 
+test('注册推送文案：新用户试用中，带邮箱、激活码（先攥着）、试用到期时间（雅加达时区）', async () => {
+  const e = { ...env(), TELEGRAM_BOT_TOKEN: 'T', TELEGRAM_CHAT_ID: 'C' };
+  let pushedText = null;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    pushedText = JSON.parse(options.body).text;
+    return new Response('{"ok":true}', { status: 200 });
+  };
+  try {
+    await handleRegister(req({ email: 'a@b.com', password: 'rahasia123' }), e, 1000);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.match(pushedText, /^🔑 新用户试用中/);
+  assert.match(pushedText, /邮箱：a@b\.com/);
+  assert.match(pushedText, /激活码：[A-Z2-9-]+（付费后发给他）/);
+  assert.match(pushedText, /试用到期：\d+月\d+日 \d{2}:\d{2}/);
+});
+
 // --- POST /request-code ---
 
-test('request-code：pending 账号作废旧码、生成新码', async () => {
+test('request-code：trial 账号作废旧码、生成新码', async () => {
   const e = env();
   const { token } = await registerAndLogin(e);
   assert.equal(e.DB.codes.length, 1);
@@ -359,6 +450,44 @@ test('request-code：pending 账号作废旧码、生成新码', async () => {
   const newRow = e.DB.codes.find((c) => c.code_hash !== oldHash);
   assert.equal(newRow.account_id, e.DB.accounts[0].id);
   assert.equal(newRow.expires_at, null); // 新码同样不设过期时间
+});
+
+test('request-code 推送文案：trial 账号带上试用到期时间', async () => {
+  const e = { ...env(), TELEGRAM_BOT_TOKEN: 'T', TELEGRAM_CHAT_ID: 'C' };
+  const { token } = await registerAndLogin(e);
+  let pushedText = null;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    pushedText = JSON.parse(options.body).text;
+    return new Response('{"ok":true}', { status: 200 });
+  };
+  try {
+    await handleRequestCode(authReq(token, {}), e, 5000);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.match(pushedText, /^🔄 重新申请激活码/);
+  assert.match(pushedText, /此码长期有效，直到被使用。/);
+  assert.match(pushedText, /试用到期：\d+月\d+日 \d{2}:\d{2}/);
+});
+
+test('request-code 推送文案：pending 账号（trial_ends_at 为空）不带试用到期行', async () => {
+  const e = { ...env(), TELEGRAM_BOT_TOKEN: 'T', TELEGRAM_CHAT_ID: 'C' };
+  const { token } = await registerAndLogin(e);
+  e.DB.accounts[0].status = 'pending';
+  e.DB.accounts[0].trial_ends_at = null;
+  let pushedText = null;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    pushedText = JSON.parse(options.body).text;
+    return new Response('{"ok":true}', { status: 200 });
+  };
+  try {
+    await handleRequestCode(authReq(token, {}), e, 5000);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.doesNotMatch(pushedText, /试用到期/);
 });
 
 // 这是取消过期机制之后最容易出错的地方：新码 expires_at 默认是 NULL，
@@ -392,7 +521,7 @@ test('重新申请后，旧码（原本 expires_at 为 NULL）激活必须失败
   const oldRes = await handleActivate(authReq(token, { code: oldCode }), e, 6000);
   assert.equal(oldRes.status, 410);
   assert.equal((await oldRes.json()).error, 'code_expired');
-  assert.equal(e.DB.accounts[0].status, 'pending'); // 没有被旧码误激活
+  assert.equal(e.DB.accounts[0].status, 'trial'); // 没有被旧码误激活
 
   // 新码：expires_at 从 NULL 起步，激活必须成功。
   const newRes = await handleActivate(authReq(token, { code: newCode }), e, 6000);

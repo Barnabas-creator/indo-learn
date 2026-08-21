@@ -1,21 +1,25 @@
 // D1 查询封装。每个函数一句 SQL，路由层不写 SQL。
-export async function createAccount(db, { email, hash, salt, now }) {
+// status/trialEndsAt 可传：注册即送试用起，新账号不再总是 'pending'
+// （见 routes.js 的 handleRegister），旧调用方不传时仍按原样退化成待激活账号。
+export async function createAccount(db, {
+  email, hash, salt, now, status = 'pending', trialEndsAt = null,
+}) {
   const res = await db
-    .prepare('INSERT INTO accounts (email, password_hash, salt, status, created_at) VALUES (?, ?, ?, ?, ?)')
-    .bind(email, hash, salt, 'pending', now)
+    .prepare('INSERT INTO accounts (email, password_hash, salt, status, trial_ends_at, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(email, hash, salt, status, trialEndsAt, now)
     .run();
   return res.meta.last_row_id;
 }
 
 export function findAccountByEmail(db, email) {
   return db
-    .prepare('SELECT id, email, password_hash, salt, status FROM accounts WHERE email = ?')
+    .prepare('SELECT id, email, password_hash, salt, status, trial_ends_at FROM accounts WHERE email = ?')
     .bind(email)
     .first();
 }
 
 export function findAccountById(db, id) {
-  return db.prepare('SELECT id, email, status FROM accounts WHERE id = ?').bind(id).first();
+  return db.prepare('SELECT id, email, status, trial_ends_at FROM accounts WHERE id = ?').bind(id).first();
 }
 
 export async function setAccountStatus(db, id, status) {

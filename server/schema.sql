@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   password_hash TEXT NOT NULL,
   salt TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
+  trial_ends_at INTEGER,
   created_at INTEGER NOT NULL
 );
 
