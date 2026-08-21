@@ -5,7 +5,9 @@ import {
 import { renderDialogList, renderDialog } from './lib/views/dialogs.js';
 import { renderGrammarList, renderGrammarModule } from './lib/views/grammar.js';
 import { renderUnlock } from './lib/views/unlock.js';
-import { renderLogin, renderRegister, renderCodeIssued, renderActivate, AUTH_ERRORS } from './lib/views/auth.js';
+import {
+  renderLogin, renderRegister, renderCodeIssued, renderCodePending, renderActivate, AUTH_ERRORS,
+} from './lib/views/auth.js';
 import { AUTH_MODE } from './lib/config.js';
 import { normalizeEmail } from './lib/remote-provider.js';
 import { LEVELS, PACKS } from './lib/catalog.js';
@@ -84,9 +86,6 @@ export function start(root, provider, tts) {
         showRegister('', true);
         try {
           const out = await provider.register(email, password);
-          // 先把码亮出来、存到本地，再去登录：账号和码在服务端已经生成好了，
-          // 后面 login() 哪怕失败也不能让用户连码都没看到就卡死。
-          if (out.code) savePendingCode(email, out.code);
           const afterCodeSeen = async () => {
             try {
               await provider.login(email, password);
@@ -96,8 +95,16 @@ export function start(root, provider, tts) {
               showLogin(msg(err));
             }
           };
-          if (out.code) renderCodeIssued(root, { code: out.code, onNext: afterCodeSeen });
-          else await afterCodeSeen();
+          if (out.code) {
+            // 自己人模式：明文码当场发给注册者，先把码亮出来、存到本地，再去登录——
+            // 账号和码在服务端已经生成好了，后面 login() 哪怕失败也不能让用户连码都没看到就卡死。
+            savePendingCode(email, out.code);
+            renderCodeIssued(root, { code: out.code, onNext: afterCodeSeen });
+          } else {
+            // 卖码模式：码已经在注册时生成并推给了管理员，注册者本人看不到明文，
+            // 没有码可暂存——提示去联系管理员，拿到码后自己点「去激活」。
+            renderCodePending(root, { email, onNext: afterCodeSeen });
+          }
         } catch (err) {
           showRegister(msg(err));
         }
@@ -105,7 +112,7 @@ export function start(root, provider, tts) {
     });
   }
 
-  function showActivate(error = '', busy = false, inputCode = null) {
+  function showActivate(error = '', busy = false, inputCode = null, notice = '') {
     // 暂存码是跟邮箱绑定的：换了账号登录，不能把上一个账号的码带出来。
     let pending = readPendingCode();
     if (pending && pending.email !== sessionEmail) {
@@ -118,6 +125,7 @@ export function start(root, provider, tts) {
       error,
       busy,
       code,
+      notice,
       onLogout: () => { clearPendingCode(); sessionEmail = null; provider.lock(); showLogin(); },
       onSubmit: async (typed) => {
         showActivate('', true, typed);
@@ -128,6 +136,18 @@ export function start(root, provider, tts) {
           render();
         } catch (err) {
           showActivate(msg(err), false, typed);
+        }
+      },
+      // 负责人可能在睡觉：作废旧码、申请新码重新推送。旧码（暂存的也好、手输的也好）
+      // 作废后都不再有效，成功后清空暂存并把输入框留空，等用户拿到新码再手输。
+      onRequestCode: async () => {
+        showActivate('', true, code);
+        try {
+          await provider.requestCode();
+          clearPendingCode();
+          showActivate('', false, '', '已重新申请，请联系管理员获取新的激活码');
+        } catch (err) {
+          showActivate(msg(err), false, code);
         }
       },
     });

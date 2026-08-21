@@ -307,3 +307,29 @@ test('刷新密钥后清空内存缓存，同一名字重新解密而不是吐�
   const second = await p.getPacks();
   assert.deepEqual(second, packsV2); // 不是 first 时缓存的 v1 内容
 });
+
+// --- 卖码模式：request-code（重新申请激活码） ---
+
+test('requestCode 带上登录令牌调 POST /request-code', async () => {
+  const api = fakeApi({
+    '/login': { token: 'T', status: 'pending' },
+    '/request-code': (options) => {
+      assert.equal(options.method, 'POST');
+      assert.equal(options.token, 'T');
+      return { ok: true };
+    },
+  });
+  const p = createRemoteProvider({ fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage: memStorage() });
+  await p.login('a@b.com', 'rahasia123');
+  const out = await p.requestCode();
+  assert.deepEqual(out, { ok: true });
+  assert.equal(api.calls.at(-1).path, '/request-code');
+});
+
+test('register 的返回值把 codeIssued 透传给调用方（卖码模式没有明文码）', async () => {
+  const api = fakeApi({ '/register': { ok: true, accountId: 1, codeIssued: true } });
+  const p = createRemoteProvider({ fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage: memStorage() });
+  const out = await p.register('a@b.com', 'rahasia123');
+  assert.equal(out.codeIssued, true);
+  assert.equal(out.code, undefined);
+});
