@@ -16,7 +16,8 @@
 
 `lib/config.js` 里的 `AUTH_MODE` 决定走哪种：
 
-- `'remote'`（当前线上用的）：账号 + 激活码，服务器（Cloudflare Workers + D1）能吊销单个账号。见下面「账号系统」。
+- `'remote'`（当前线上用的）：账号 + 激活码，服务器（Cloudflare Workers + D1）能吊销单个账号。
+  **注册即送 7 天全量试用**，不用等激活码就能立刻用。见下面「账号系统」「试用机制」。
 - `'password'`（旧模式，仍保留代码，紧急回退用）：全员共用一个内容密码，纯静态站做不到吊销。见下面「安全边界」。
 
 ## 打包内容
@@ -58,7 +59,12 @@ node tools/pack-content.mjs --password '新密码' --version v2
 - 拿到密钥、下载过加密包的人技术上总能导出明文并转发。账号 + 激活码挡的是随手转发，
   挡不住蓄意扒取。
 - 离线状态下客户端用的是本地缓存的密钥，30 天内联不上网也能继续用；要做到「离线也立即
-  失效」在物理上不可能——这是可吊销与可离线之间的必然取舍。
+  失效」在物理上不可能——这是可吊销与可离线之间的必然取舍。**准确的说法是**：每次
+  成功联网时，能不能用完全由服务端说了算（吊销、试用到期都会被立刻拒掉）；纯离线场景
+  下退化成本地缓存的过期时间（`expiresAt`）兜底判断，而这个值存在浏览器 localStorage
+  里，用户手改它、并且此后一直不再联网触发服务端校验，理论上能绕开本地这道拦截、
+  一直用下去。这不是漏洞、也不是本次改动引入的问题，是「可离线 + 可吊销」这个设计
+  取舍必然带来的口子，写文档时不要说成「判定权只在服务端」这类更绝对的话。
 
 **`password` 模式**（旧模式，仅作紧急回退用）没有吊销能力，这些限制是设计使然：
 
@@ -73,8 +79,8 @@ node tools/pack-content.mjs --password '新密码' --version v2
 
 - 线上地址：`https://indo-learn-api.barnabas7223.workers.dev`
 - D1 数据库名：`indo-learn`
-- 四个接口：`POST /register`、`POST /login`、`POST /activate`、`GET /content-key`
-  （入参出参见 `docs/superpowers/specs/2026-08-20-账号激活码授权-design.md`）
+- 五个接口：`POST /register`、`POST /login`、`POST /activate`、`POST /request-code`、
+  `GET /content-key`（入参出参见 `docs/superpowers/specs/2026-08-20-账号激活码授权-design.md`）
 
 ### 部署 Worker
 
@@ -109,15 +115,23 @@ export $(cat ~/.cloudflare-token) && npx wrangler versions view <最新 Version 
 ### D1 表结构（五张）
 
 ```sql
-accounts(id, email UNIQUE, password_hash, salt, status, created_at)
-codes(code_hash UNIQUE, account_id NULL, issued_at, used_at)
+accounts(id, email UNIQUE, password_hash, salt, status, trial_ends_at, created_at)
+codes(code_hash UNIQUE, account_id NULL, issued_at, used_at, expires_at NULL)  -- 新码 expires_at 恒为 NULL（已取消过期，见下）
 content_keys(version, cek, is_current, created_at)
 attempts(ip, endpoint, ts)          -- 限流用，见 idx_attempts 索引
 error_log(id, ts, method, path, name, message)  -- 未被业务逻辑捕获的异常，纯排障用
 ```
 
-完整建表语句见 `server/schema.sql`；`status` 取值 `pending`（未激活）/ `active` /
-`disabled`（吊销）。
+完整建表语句见 `server/schema.sql`；`status` 是个四态状态机：
+
+- `pending`（未激活，遗留值）——`createAccount` 不传 `status` 时的默认值，当前
+  `/register` 已经不会再产出这个状态（见下面「试用机制」），只有旧调用方/测试还会用到。
+- `trial`（试用中）——`/register` 建的新账号从一开始就是这个状态。
+- `active`（已激活/已付费）——输对激活码之后。
+- `disabled`（吊销）——负责人用 `tools/admin.mjs disable` 手动设置。
+
+`trial_ends_at` 只有 `trial` 状态的账号会写值（毫秒时间戳），其余状态不使用（`active`
+账号保留历史值不清空，方便日后统计试用转化，但不再参与任何判断）。
 
 日常查账号状态、停用/启用账号、重置密码、查激活码绑定情况，用 `tools/admin.mjs`
 （见下面「运维」），不要手写 SQL——它会带上安全的字段筛选（比如查账号从不选
@@ -128,31 +142,127 @@ cd server
 export $(cat ~/.cloudflare-token) && npx wrangler d1 execute indo-learn --remote --command "SELECT ..."
 ```
 
+### 试用机制：注册即送 7 天全量试用
+
+`server/src/routes.js` 里的 `TRIAL_DAYS = 7`。`/register` 建账号时直接把 `status`
+设成 `trial`、`trial_ends_at = now + 7 天`，同时照常生成一张激活码绑定到这个账号——
+但试用期间**不发给用户本人**，负责人先攥着，等对方确认付费了再手动告知（Telegram
+推送文案里会写清楚「付费后发给他」）。前端注册成功后自动登录，直接进首页，不再
+经过「显示码/待发放提示 → 激活页」那一步；激活页仍然可达，用户付费后从首页横幅的
+「输入激活码」按钮进去输码。
+
+`GET /content-key` 对 `trial` 账号的处理：
+
+- `now < trial_ends_at`：正常放行，返回内容密钥；但 `expiresAt`（客户端本地缓存密钥
+  的有效期）**截断到 `Math.min(now + 30 天, trial_ends_at)`**，不是固定 30 天。
+- `now >= trial_ends_at`：返回 `403 { error: 'trial_expired' }`，前端清会话、回登录页，
+  显示「试用已结束，请联系管理员购买完整版」。
+
+**为什么 `expiresAt` 要截断到试用结束，而不是照常给 30 天**：客户端离线时靠本地缓存的
+密钥继续用，这是整个账号系统「可吊销 vs 可离线」权衡下故意留的口子（见「安全边界」）。
+如果试用账号也按普通账号给 30 天缓存有效期，用户断网后能拿着这把钥匙把 7 天试用
+白嫖成一个月——`trial_ends_at` 形同虚设。截断之后，本地缓存最多撑到试用真正到期
+那一刻——前端 `lib/remote-provider.js` 的 `init()` 里，本地时钟一过 `expiresAt` 就地
+清会话，不用等联网时服务器再拒一次。但跟「安全边界」里说的一样，这道截断挡住的是
+「正常使用会联网」的场景，不是密码学意义上不可绕过：`expiresAt` 存在 localStorage
+里，用户手改这个值、并且此后一直不再联网触发服务端重新判定，理论上能绕过它，把
+试用继续用下去。
+
+`active` 状态不受这条限制，仍然是固定 30 天。
+
+手动给账号补/延长试用期（比如老用户续期、内测账号重新给一段）：
+
+```bash
+node tools/admin.mjs grant-trial someone@example.com --days 7
+```
+
+会把该账号 `status` 设为 `trial`、`trial_ends_at` 设为 `now + 7 天`（覆盖旧值，不叠加）。
+
 ## 两种发码模式
 
-`server/wrangler.toml` 的 `[vars] AUTO_ISSUE_CODE` 控制，改了要 `npx wrangler deploy` 重新部署：
+`server/wrangler.toml` 的 `[vars] AUTO_ISSUE_CODE` 控制，改了要 `npx wrangler deploy` 重新部署。
+**两种模式下 `/register` 都会当场生成一张码、直接绑定到刚建的账号**（一张码只能激活它
+所属的那个账号），**码不设过期时间、长期有效**，且**都会推送到负责人的 Telegram**
+（见下面「Telegram 通知配置」）；区别只在于明文码是否也直接返回给注册者本人：
 
-- `"true"`（前期，自己人用）：`/register` 成功当场返回一张激活码，注册页直接显示 + 提供
-  复制按钮，用户自己走完注册 → 激活。
-- `"false"`（后期，卖码模式）：`/register` 只建账号，**不再**顺手生成码——那张码的明文
-  谁都拿不到（服务器只存哈希），生成了也没法发放。改成这个模式前，必须先用
-  `tools/issue-code.mjs` 预先批量生成一批码：
+- `"true"`（前期，自己人用）：`/register` 响应里带明文码。前端注册成功、自动登录后
+  （此时账号已是 `trial`，能直接用）显示 `renderCodeIssued`——码 + 复制按钮，点「下一步」
+  才进首页。
+- `"false"`（后期，卖码模式，线上默认）：`/register` 响应里**没有**明文码（服务器只存
+  哈希，给了也白给）——前端直接进首页，靠首页横幅提示试用还剩几天、怎么买；明文码
+  只在 Telegram 推送里能看到，由负责人手动告知买家，用户付费后从首页横幅的
+  「输入激活码」按钮进激活页输入。
+
+  这个模式下不再需要靠 `tools/issue-code.mjs` 预先批量生码——每次注册都会自动生成
+  绑定好的码。`issue-code.mjs` 仍然保留，用于批量生成**不绑定任何账号**的散码（`account_id`
+  为空、同样不设过期），给老式「先发码后注册」的场景用：
 
   ```bash
   cd /home/barnabas/印尼语学习
   node tools/issue-code.mjs --count 20
   ```
 
-  码的哈希会写进 D1 的 `codes` 表（`account_id` 为空，等用户激活时才绑定），明文只在
-  终端打印这一次——**立刻复制保存**，脚本不会再吐第二次。之后手动发给买家（微信/邮件
-  等），买家注册后自己去激活页输入。
+### 为什么取消了过期时间
+
+早先版本码有 3 小时有效期（后来一度改成 30 分钟），设计初衷是防止码被滥用囤积。
+但这套系统本来就是「一码一账号」：注册时生成的码从一开始就绑定到那个账号，且
+`/activate` 要求先登录（必须有有效令牌）才能提交码——光有码明文没用，还得有那个
+账号的邮箱和密码。也就是说，过期时间能挡住的场景，早就被「码绑定账号」+「必须
+先登录」这两道锁挡住了，它挡不住任何过期时间之外的实际威胁。而代价是真实的：
+半夜注册、负责人在睡觉，几小时后码作废，用户只能自己摸索重新登录、点「重新
+申请激活码」。因此改为**码永不过期**，僵尸码（已绑账号但一直没激活的码）改由
+负责人定期用 `tools/admin.mjs` 人工清理（见下面「运维」）。
+
+库里仍留着一批取消过期之前发出的旧码（30 分钟版、3 小时版），它们的 `expires_at`
+是具体时间戳，到期后 `/activate` 仍然会报 `code_expired`——这条校验没有删，只是
+新码不会再带过期时间。
+
+### 待激活用户拿不到码怎么办：`POST /request-code`
+
+负责人可能没及时看到通知，注册者不该无限期干等。激活页有「重新申请激活码」按钮，
+调 `POST /request-code`（需要 Bearer 令牌）：账号是 `pending` 或 `trial` 状态时，作废该
+账号名下所有未使用的旧码（`expires_at` 从 NULL 置成 0，等同立即报 `code_expired`），
+生成一张新码（同样不设过期）重新绑定 + 推送 Telegram（`trial` 账号推送里会带上试用
+到期时间）；账号已经是 `active` 直接返回 `{ok:true, status:'active'}`；`disabled`
+账号返回 403。限流：同一 IP 每小时最多 3 次。
+
+### Telegram 通知配置
+
+推送用的凭据是两个 Workers Secret，不进 `wrangler.toml`、不进仓库：
+
+```bash
+cd server
+export $(cat ~/.cloudflare-token) && npx wrangler secret put TELEGRAM_BOT_TOKEN
+# 交互式输入 bot token
+export $(cat ~/.cloudflare-token) && npx wrangler secret put TELEGRAM_CHAT_ID
+# 交互式输入负责人的 Telegram chat id
+```
+
+本地开发/测试环境没配这两个变量时，`notifyOwner`（`server/src/notify.js`）直接跳过，
+不报错；推送失败（网络问题、Telegram 侧故障）也绝不影响注册/激活主流程，只留一条
+`error_log` 供排障。
+
+注册即送试用起，`/register` 的推送文案改成「🔑 新用户试用中」，带上试用到期时间
+（固定按雅加达时区 UTC+7 显示，不依赖 Workers 运行时自己的时区）：
+
+```
+🔑 新用户试用中
+
+邮箱：xxx@example.com
+激活码：XXXX-XXXX-XXXX-XXXX（付费后发给他）
+试用到期：8月29日 14:30
+```
+
+`/request-code` 的「🔄 重新申请激活码」文案不变，只是 `trial` 账号会多带一行
+「试用到期：…」；非试用账号（`trial_ends_at` 为空，比如走 `issue-code.mjs` 散码
+流程的老式 pending 账号）不显示这一行。
 
 ## 运维：`tools/admin.mjs`
 
 ```bash
 cd /home/barnabas/印尼语学习
 
-# 列出账号（id / email / status / created_at，不显示哈希与盐）
+# 列出账号（id / email / status / trial_ends_at / created_at，不显示哈希与盐）
 node tools/admin.mjs list
 node tools/admin.mjs list --email rebecca      # 按邮箱关键字模糊筛选
 
@@ -163,14 +273,23 @@ node tools/admin.mjs enable someone@example.com
 # 重置密码（本地算好 PBKDF2 哈希 + 盐再写库，不是明文入库）
 node tools/admin.mjs reset-password someone@example.com --password '新密码'
 
-# 查激活码绑定情况（哈希只显示前 8 位，account_id、used_at）
+# 补/延长试用期（把账号设为 trial，trial_ends_at = now + N 天，覆盖旧值）
+node tools/admin.mjs grant-trial someone@example.com --days 7
+
+# 查激活码绑定情况（哈希只显示前 8 位，account_id、used_at、expires_at）
 node tools/admin.mjs codes
 node tools/admin.mjs codes --unused            # 只看还没被绑定的码
+node tools/admin.mjs codes --stale             # 只看僵尸码：已绑账号但从未激活
+
+# 清理僵尸码（码取消过期后，这批码不会再自动失效，得定期人工清）
+node tools/admin.mjs prune-codes               # 不加 --yes 只打印将删除的条数，不会真删
+node tools/admin.mjs prune-codes --yes         # 确认后真正删除
 ```
 
 ⚠️ 这个脚本直接改生产 D1（`indo-learn`），**只在个人开发机手动跑**，不接 CI、
 不接共享机器——同机其他进程能在 `ps` 里看到命令行参数（包括 `reset-password` 时的
-邮箱和算好的哈希/盐，虽然不是明文密码本身）。
+邮箱和算好的哈希/盐，虽然不是明文密码本身）。`prune-codes` 是删除操作，不加 `--yes`
+时只查数不动库，确认过条数再补 `--yes`。
 
 ## 发布流程
 
@@ -282,11 +401,11 @@ node tools/push-content-key.mjs --password '密码'  # remote 模式：把新密
 | `lib/tts.js` | Web Speech `id-ID` 封装 |
 | `lib/icons.js` / `lib/emoji-map.js` | 词 → OpenMoji 映射，三级回退 |
 | `lib/views/` | 视图：解锁（旧模式）、注册/登录/激活（`auth.js`，新模式）、单词包、对话、语法 |
-| `server/` | Cloudflare Workers + D1 后端：`src/routes.js`（四个接口）、`src/crypto.js`（密码哈希/令牌）、`src/codes.js`（激活码生成/哈希）、`src/db.js`（SQL 封装）、`schema.sql`（建表）、`wrangler.toml`（部署配置） |
+| `server/` | Cloudflare Workers + D1 后端：`src/routes.js`（五个接口：`POST /register`、`POST /login`、`POST /activate`、`POST /request-code`、`GET /content-key`）、`src/crypto.js`（密码哈希/令牌）、`src/codes.js`（激活码生成/哈希）、`src/db.js`（SQL 封装）、`schema.sql`（建表）、`wrangler.toml`（部署配置） |
 | `tools/` | 提取、生成、校验、打包脚本（本机运行） |
 | `tools/push-content-key.mjs` | 把内容密钥灌进 D1（发布流程第 2 步，见上） |
 | `tools/issue-code.mjs` | 卖码模式下本地批量生成激活码，明文只打印一次 |
-| `tools/admin.mjs` | 运维：查账号、停用/启用、重置密码、查激活码绑定 |
+| `tools/admin.mjs` | 运维：查账号、停用/启用、重置密码、查激活码绑定、清理僵尸码（`--stale`/`prune-codes`） |
 | `content-src/` | 明文内容，**不提交** |
 | `reference/` | 参考资料，**不提交** |
 | `data/` | 加密产物，提交并发布 |

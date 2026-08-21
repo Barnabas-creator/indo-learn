@@ -1,5 +1,7 @@
 // 入口：路由分发、CORS、错误兜底。业务逻辑都在 routes.js。
-import { handleRegister, handleLogin, handleActivate, handleContentKey, json } from './routes.js';
+import {
+  handleRegister, handleLogin, handleActivate, handleContentKey, handleRequestCode, json,
+} from './routes.js';
 import { recordError } from './db.js';
 
 export function corsHeaders(env) {
@@ -15,11 +17,14 @@ const ROUTES = {
   'POST /register': handleRegister,
   'POST /login': handleLogin,
   'POST /activate': handleActivate,
+  'POST /request-code': handleRequestCode,
   'GET /content-key': handleContentKey,
 };
 
 export default {
-  async fetch(request, env) {
+  // ctx 是 Workers 的 ExecutionContext：register/request-code 里的 Telegram 推送靠它的
+  // waitUntil 做成 fire-and-forget（见 routes.js 的 notifyInBackground），不拖慢响应。
+  async fetch(request, env, ctx) {
     const cors = corsHeaders(env);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
@@ -32,7 +37,7 @@ export default {
       res = json({ error: 'not_found' }, 404);
     } else {
       try {
-        res = await handler(request, env);
+        res = await handler(request, env, undefined, ctx);
       } catch (err) {
         console.error(err);
         try {

@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRemoteProvider, REMOTE_STORAGE_KEY, normalizeEmail } from '../lib/remote-provider.js';
+import {
+  createRemoteProvider, REMOTE_STORAGE_KEY, normalizeEmail, trialDaysLeft,
+} from '../lib/remote-provider.js';
 import { generateCek, exportCek, encryptJson } from '../lib/crypto.js';
 
 function memStorage() {
@@ -68,7 +70,9 @@ test('登录存下令牌，init 之后认得状态', async () => {
   const p2 = createRemoteProvider({
     fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
   });
-  assert.deepEqual(await p2.init(), { unlocked: false, status: 'pending', email: 'a@b.com' });
+  assert.deepEqual(await p2.init(), {
+    unlocked: false, status: 'pending', email: 'a@b.com', trialEndsAt: null,
+  });
 });
 
 // --- 以下为审查追加：暂存激活码要按邮箱校验，靠 init()/login() 记住的 email ---
@@ -161,7 +165,7 @@ test('离线时（接口抛错）用本地缓存的密钥继续可用', async ()
   const p = createRemoteProvider({
     fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
   });
-  assert.deepEqual(await p.init(), { unlocked: true, status: 'active', email: null });
+  assert.deepEqual(await p.init(), { unlocked: true, status: 'active', email: null, trialEndsAt: null });
 });
 
 test('lock 清掉会话', async () => {
@@ -215,7 +219,7 @@ test('服务器返回 no_content_key（服务器自己的问题）时不清会�
   const p = createRemoteProvider({
     fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
   });
-  assert.deepEqual(await p.init(), { unlocked: true, status: 'active', email: null });
+  assert.deepEqual(await p.init(), { unlocked: true, status: 'active', email: null, trialEndsAt: null });
   assert.ok(storage.getItem(REMOTE_STORAGE_KEY));
 });
 
@@ -229,7 +233,7 @@ test('网络异常（TypeError，fetch 自己的错误）时不清会话，仍�
   const p = createRemoteProvider({
     fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage,
   });
-  assert.deepEqual(await p.init(), { unlocked: true, status: 'active', email: null });
+  assert.deepEqual(await p.init(), { unlocked: true, status: 'active', email: null, trialEndsAt: null });
   assert.ok(storage.getItem(REMOTE_STORAGE_KEY));
 });
 
@@ -306,4 +310,138 @@ test('刷新密钥后清空内存缓存，同一名字重新解密而不是吐�
   version = 'v2';
   const second = await p.getPacks();
   assert.deepEqual(second, packsV2); // 不是 first 时缓存的 v1 内容
+});
+
+// --- 卖码模式：request-code（重新申请激活码） ---
+
+test('requestCode 带上登录令牌调 POST /request-code', async () => {
+  const api = fakeApi({
+    '/login': { token: 'T', status: 'pending' },
+    '/request-code': (options) => {
+      assert.equal(options.method, 'POST');
+      assert.equal(options.token, 'T');
+      return { ok: true };
+    },
+  });
+  const p = createRemoteProvider({ fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage: memStorage() });
+  await p.login('a@b.com', 'rahasia123');
+  const out = await p.requestCode();
+  assert.deepEqual(out, { ok: true });
+  assert.equal(api.calls.at(-1).path, '/request-code');
+});
+
+test('register 的返回值把 codeIssued 透传给调用方（卖码模式没有明文码）', async () => {
+  const api = fakeApi({ '/register': { ok: true, accountId: 1, codeIssued: true } });
+  const p = createRemoteProvider({ fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage: memStorage() });
+  const out = await p.register('a@b.com', 'rahasia123');
+  assert.equal(out.codeIssued, true);
+  assert.equal(out.code, undefined);
+});
+
+// --- 注册即送 7 天试用 ---
+
+test('trialDaysLeft：向上取整，已过期或无试用时返回 0', () => {
+  const now = 1_000_000;
+  assert.equal(trialDaysLeft(now + 86400_000, now), 1); // 恰好 1 天
+  assert.equal(trialDaysLeft(now + 86400_000 + 1, now), 2); // 多 1 毫秒也要向上取整成 2 天
+  assert.equal(trialDaysLeft(now - 1, now), 0); // 已过期
+  assert.equal(trialDaysLeft(now, now), 0); // 刚好到点，不算「还剩」
+  assert.equal(trialDaysLeft(null, now), 0); // 非试用账号
+});
+
+test('登录返回 status=trial 时，init 之后是解锁状态，且带上 trialEndsAt', async () => {
+  const storage = memStorage();
+  const trialEndsAt = Date.now() + 7 * 86400_000;
+  const api = fakeApi({
+    '/login': { token: 'T', status: 'trial', trialEndsAt },
+    '/content-key': { cek: 'KUNCI', contentVersion: 'v5', expiresAt: trialEndsAt, trialEndsAt },
+  });
+  const p = createRemoteProvider({ fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage });
+  const out = await p.login('a@b.com', 'rahasia123');
+  assert.equal(out.status, 'trial');
+  assert.equal(out.trialEndsAt, trialEndsAt);
+
+  const p2 = createRemoteProvider({ fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage });
+  const initOut = await p2.init();
+  assert.equal(initOut.unlocked, true);
+  assert.equal(initOut.status, 'trial');
+  assert.equal(initOut.trialEndsAt, trialEndsAt);
+});
+
+test('trial 账号的 session.expiresAt 截断到 trialEndsAt，不是 30 天后', async () => {
+  const storage = memStorage();
+  const trialEndsAt = Date.now() + 3 * 86400_000; // 只剩 3 天，远小于 30 天
+  const api = fakeApi({
+    '/login': { token: 'T', status: 'trial', trialEndsAt },
+    '/content-key': { cek: 'KUNCI', contentVersion: 'v5', expiresAt: trialEndsAt, trialEndsAt },
+  });
+  const p = createRemoteProvider({ fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage });
+  await p.login('a@b.com', 'rahasia123');
+  const saved = JSON.parse(storage.getItem(REMOTE_STORAGE_KEY));
+  assert.equal(saved.expiresAt, trialEndsAt);
+});
+
+test('试用已在本地过期（完全离线也拦得住）：init 清会话，且能读到 trial_expired 原因', async () => {
+  const storage = memStorage();
+  storage.setItem(REMOTE_STORAGE_KEY, JSON.stringify({
+    token: 'T', status: 'trial', cek: 'KUNCI', contentVersion: 'v5', trialEndsAt: 500, expiresAt: 500,
+  }));
+  const api = fakeApi({}); // 不会被调用：本地时间检查在联网之前就先拦下
+  const p = createRemoteProvider({
+    fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage, now: () => 999999,
+  });
+  const out = await p.init();
+  assert.deepEqual(out, { unlocked: false, status: 'none', email: null });
+  assert.equal(p.lastRevokeReason(), 'trial_expired');
+  assert.equal(api.calls.length, 0);
+});
+
+test('服务器返回 trial_expired 时，init 清掉会话并可读到原因', async () => {
+  const storage = memStorage();
+  storage.setItem(REMOTE_STORAGE_KEY, JSON.stringify({
+    token: 'T', status: 'trial', cek: 'KUNCI', contentVersion: 'v5', trialEndsAt: Date.now() + 86400000,
+    expiresAt: Date.now() + 86400000,
+  }));
+  const api = fakeApi({ '/content-key': () => { throw new Error('trial_expired'); } });
+  const p = createRemoteProvider({ fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage });
+  const out = await p.init();
+  assert.deepEqual(out, { unlocked: false, status: 'none', email: null });
+  assert.equal(storage.getItem(REMOTE_STORAGE_KEY), null);
+  assert.equal(p.lastRevokeReason(), 'trial_expired');
+});
+
+test('lastRevokeReason 是消费型的：读一次之后再读就是 null', async () => {
+  const storage = memStorage();
+  storage.setItem(REMOTE_STORAGE_KEY, JSON.stringify({
+    token: 'T', status: 'trial', cek: 'KUNCI', contentVersion: 'v5', trialEndsAt: 500, expiresAt: 500,
+  }));
+  const p = createRemoteProvider({
+    fetchJson: fakeFetchJson(), apiFetch: fakeApi({}).apiFetch, storage, now: () => 999999,
+  });
+  await p.init();
+  assert.equal(p.lastRevokeReason(), 'trial_expired');
+  assert.equal(p.lastRevokeReason(), null);
+});
+
+test('trial 账号用码激活后 status 变 active，之后 content-key 不再受试用限制（expiresAt 恢复 30 天口径）', async () => {
+  const storage = memStorage();
+  const trialEndsAt = Date.now() + 3 * 86400_000;
+  const contentKeyResponses = [
+    { cek: 'K1', contentVersion: 'v5', expiresAt: trialEndsAt, trialEndsAt }, // login 时（试用中）
+    { cek: 'K2', contentVersion: 'v5', expiresAt: Date.now() + 30 * 86400_000, trialEndsAt: null }, // 激活后
+  ];
+  let keyCallCount = 0;
+  const api = fakeApi({
+    '/login': { token: 'T', status: 'trial', trialEndsAt },
+    '/activate': { ok: true, status: 'active', trialEndsAt },
+    '/content-key': () => contentKeyResponses[Math.min(keyCallCount++, contentKeyResponses.length - 1)],
+  });
+  const p = createRemoteProvider({ fetchJson: fakeFetchJson(), apiFetch: api.apiFetch, storage });
+  await p.login('a@b.com', 'rahasia123');
+  const out = await p.activate('ABCD-EFGH-JKMN-PQRS');
+  assert.equal(out.status, 'active');
+  const saved = JSON.parse(storage.getItem(REMOTE_STORAGE_KEY));
+  assert.equal(saved.status, 'active');
+  assert.equal(saved.cek, 'K2');
+  assert.ok(saved.expiresAt > Date.now() + 29 * 86400_000); // 不再截断到已经过去的试用期
 });

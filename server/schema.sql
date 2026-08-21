@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   password_hash TEXT NOT NULL,
   salt TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
+  trial_ends_at INTEGER,
   created_at INTEGER NOT NULL
 );
 
@@ -11,7 +12,8 @@ CREATE TABLE IF NOT EXISTS codes (
   code_hash TEXT PRIMARY KEY,
   account_id INTEGER,
   issued_at INTEGER NOT NULL,
-  used_at INTEGER
+  used_at INTEGER,
+  expires_at INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS content_keys (
