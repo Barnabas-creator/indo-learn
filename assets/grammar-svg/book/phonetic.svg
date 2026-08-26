@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="发音">
+  <!-- 发音篇：字母 A 发出声波。抽象概念用图形表达，配色沿用 app 的苔绿/丁香棕/金，
+       中间调在浅底与深底上都看得清，所以不随主题切换。 -->
+  <circle cx="72" cy="100" r="52" fill="#2f5d4f" opacity=".12"/>
+  <path d="M72 68 L92 132 H80 L76 120 H68 L64 132 H52 Z" fill="#2f5d4f"/>
+  <rect x="66" y="104" width="12" height="7" rx="3.5" fill="#fbf9f2"/>
+  <g fill="none" stroke="#b4552d" stroke-linecap="round" stroke-width="9">
+    <path d="M126 82c9 11 9 25 0 36" opacity=".95"/>
+    <path d="M148 66c17 20 17 48 0 68" opacity=".6"/>
+    <path d="M170 52c25 29 25 67 0 96" opacity=".3"/>
+  </g>
+  <circle cx="72" cy="152" r="6" fill="#c9a227"/>
+</svg>

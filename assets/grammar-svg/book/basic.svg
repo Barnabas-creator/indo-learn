@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="基础">
+  <!-- 基础篇：主语＋谓语＋宾语三块积木叠成句子的地基 -->
+  <rect x="24" y="132" width="152" height="34" rx="10" fill="#2f5d4f"/>
+  <rect x="42" y="94" width="116" height="30" rx="9" fill="#b4552d"/>
+  <rect x="62" y="58" width="76" height="28" rx="8" fill="#c9a227"/>
+  <g fill="#fbf9f2" opacity=".85">
+    <rect x="40" y="145" width="34" height="8" rx="4"/>
+    <rect x="84" y="145" width="34" height="8" rx="4"/>
+    <rect x="128" y="145" width="30" height="8" rx="4"/>
+    <rect x="58" y="105" width="40" height="8" rx="4"/>
+    <rect x="108" y="105" width="34" height="8" rx="4"/>
+    <rect x="78" y="68" width="44" height="8" rx="4"/>
+  </g>
+  <circle cx="100" cy="40" r="7" fill="#2f5d4f" opacity=".55"/>
+</svg>

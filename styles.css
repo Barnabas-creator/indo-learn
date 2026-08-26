@@ -111,6 +111,86 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
   border-radius: 999px;
 }
 
+/* 缺印尼语音色提示：安卓没装 Google TTS 印尼语数据包时，朗读是纯静音不报错 */
+.voice-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  background: var(--clove-soft);
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.voice-hint-text { flex: 1; min-width: 200px; }
+
+.voice-hint-close {
+  flex-shrink: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--card);
+  border: 1px solid var(--line);
+  padding: 5px 12px;
+  border-radius: 999px;
+}
+
+/* 桌面键：右下角常驻，一下回到首页。PWA 全屏后没有地址栏，深层返回要点好几次 */
+.home-key {
+  position: fixed;
+  right: calc(14px + env(safe-area-inset-right));
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  z-index: 20;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--moss);
+  box-shadow: var(--shadow);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.home-key:active { transform: scale(.94); }
+
+.home-key-glyph { font-size: 24px; line-height: 1; }
+
+/* 激活成功后的鼓励页 */
+.activated { text-align: center; }
+
+.activated-burst { font-size: 60px; animation: pop .4s ease; }
+
+@media (prefers-reduced-motion: reduce) { .activated-burst { animation: none; } }
+
+.activated-line { color: var(--ink-2); font-size: 15px; margin: 6px 0 18px; }
+
+.activated-cheer {
+  font-family: var(--serif);
+  font-size: 20px;
+  line-height: 1.6;
+  color: var(--clove);
+  margin: 0 0 6px;
+}
+
+.activated-sub { font-size: 13px; color: var(--mute); margin: 0 0 26px; }
+
+.activated .next {
+  padding: 14px 28px;
+  font-size: 16px;
+  font-weight: 650;
+  color: #fff;
+  background: var(--moss);
+  border-radius: 14px;
+}
+
+@media (prefers-color-scheme: dark) { .activated .next { color: #10130f; } }
+
 /* 首页 */
 .home { max-width: 560px; margin: 0 auto; padding: 40px 18px 32px; }
 .home-hero { text-align: center; margin-bottom: 34px; }
@@ -341,7 +421,11 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .key-phrases span, .dialog-vocab span { color: var(--mute); font-size: 13px; }
 
 /* 语法 */
-.grammar-number { flex: none; font-family: var(--serif); font-size: 18px; font-weight: 700; color: var(--moss); }
+/* 每一篇配一张手写的概念图：语法讲的是抽象的东西，没有实物可画 */
+.grammar-mark { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 46px; }
+.grammar-visual { width: 42px; height: 42px; display: block; }
+.grammar-number { font-family: var(--serif); font-size: 13px; font-weight: 700; color: var(--mute); letter-spacing: .5px; }
+.grammar-head-visual { width: 28px; height: 28px; flex: none; }
 .grammar-body { flex: 1; display: flex; flex-direction: column; gap: 3px; }
 .grammar-title { font-size: 16px; font-weight: 650; }
 .grammar-subtitle { font-size: 12px; color: var(--mute); }

@@ -55,10 +55,9 @@
     VoiceUtterance: window.SpeechSynthesisUtterance,
   });
 
-  // 部分浏览器首次 getVoices() 返回空，音色列表就绪后重绘一次。
-  if (window.speechSynthesis) {
-    window.speechSynthesis.addEventListener?.('voiceschanged', () => {}, { once: true });
-  }
+  // 安卓首次 getVoices() 返回空，音色要等 voiceschanged 才到齐。提前把等待发起，
+  // 免得用户第一次点朗读时还要现等（tts.js 内部会缓存这个 Promise）。
+  tts.whenReady?.();
 
   start(document.getElementById('app'), provider, tts);
 

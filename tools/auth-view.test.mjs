@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  AUTH_ERRORS, renderLogin, renderRegister, renderActivate, renderCodeIssued,
+  AUTH_ERRORS, renderLogin, renderRegister, renderActivate, renderCodeIssued, renderActivated,
 } from '../lib/views/auth.js';
 
 // 极小的手写假 DOM：够 render* 函数 innerHTML 赋值后调 querySelector 绑事件即可，
@@ -143,4 +143,15 @@ test('renderActivate 在重新申请按钮附近显示管理员邮箱与 mailto 
   });
   assert.match(root.innerHTML, new RegExp(`href="mailto:${ADMIN_EMAIL}"`));
   assert.match(root.innerHTML, new RegExp(ADMIN_EMAIL));
+});
+
+// --- 激活成功的鼓励页 ---
+
+test('激活成功页写着鼓励语和表情', () => {
+  const root = fakeRoot();
+  renderActivated(root, { onNext() {} });
+  assert.match(root.innerHTML, /激活成功/);
+  assert.match(root.innerHTML, /学习语言需要坚持，加油，朋友！/);
+  assert.match(root.innerHTML, /💪|🎉/);
+  assert.match(root.innerHTML, /class="next primary"/);
 });

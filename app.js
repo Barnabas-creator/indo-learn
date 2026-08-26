@@ -6,13 +6,15 @@ import { renderDialogList, renderDialog } from './lib/views/dialogs.js';
 import { renderGrammarList, renderGrammarModule } from './lib/views/grammar.js';
 import { renderUnlock } from './lib/views/unlock.js';
 import {
-  renderLogin, renderRegister, renderActivate, renderCodeIssued, AUTH_ERRORS, escapeHtml,
+  renderLogin, renderRegister, renderActivate, renderCodeIssued, renderActivated,
+  AUTH_ERRORS, escapeHtml,
 } from './lib/views/auth.js';
 import { AUTH_MODE, ADMIN_CONTACT } from './lib/config.js';
 import { normalizeEmail, trialDaysLeft } from './lib/remote-provider.js';
 import { LEVELS, PACKS } from './lib/catalog.js';
+import { parentView, isBackSwipe } from './lib/nav.js';
 
-export function start(root, provider, tts) {
+export function start(root, provider, tts, { history: hist = globalThis.history, win = globalThis } = {}) {
   // 导航状态。view 决定当前层，其余字段是该层参数。全程不落盘。
   let view = 'home';
   let level = null; // 'beginner' | 'intermediate' | 'advanced'
@@ -24,8 +26,66 @@ export function start(root, provider, tts) {
   // 激活成功后 status 变 active，横幅自然消失（下一次 render 就不会再画它）。
   let accountStatus = null;
   let accountTrialEndsAt = null;
+  // 当前是不是在主界面（mount() 画的那几层）。登录/注册/激活/鼓励页不算——
+  // 那几页没有「上一层」，返回手势与桌面键都不该在上面生效。
+  let inApp = false;
+  // 音色列表到齐了没有。没到齐之前不能断言「这台手机没有印尼语音色」，
+  // 否则安卓上会先闪一条错误的缺音色提示。
+  let voicesReady = false;
+  let voiceHintDismissed = false;
+  tts.whenReady?.().then(() => { voicesReady = true; });
+
+  // —— 导航：层深由 nav.js 的父子关系算出来，history 记录与层深一一对应 ——
+  // 下钻 pushState，同层（词卡 → 恭喜页）replaceState，上行一律交给 history.go(-n)。
+  // 这样系统返回键、安卓左边缘返回手势、页内返回按钮、桌面键走的是同一条路，
+  // history 不会越点越深，也不会在 PWA 里一按返回就把应用关掉。
+  const depthOf = (v) => { let d = 0; let cur = v; while ((cur = parentView(cur)) !== null) d += 1; return d; };
+
+  function goTo(next) {
+    const before = depthOf(view);
+    const after = depthOf(next);
+    view = next;
+    if (after > before) hist?.pushState?.({ view: next }, '');
+    else hist?.replaceState?.({ view: next }, '');
+    render();
+  }
+
+  function goUp(next) {
+    if (next === view) return;
+    const delta = depthOf(view) - depthOf(next);
+    tts.stop();
+    if (delta > 0 && hist?.go) { hist.go(-delta); return; } // 落到 popstate 里统一改 view
+    view = next;
+    render();
+  }
+
+  const goBack = () => { const parent = parentView(view); if (parent) goUp(parent); };
+  const goHome = () => goUp('home');
+
+  win?.addEventListener?.('popstate', (e) => {
+    if (!inApp) return; // 停在登录/激活页时不接管，让浏览器按自己的来
+    view = e?.state?.view ?? 'home';
+    tts.stop();
+    render();
+  });
+
+  // 手势导航的安卓机上，左边缘右滑已经被系统吃掉了（走上面的 popstate）；
+  // 三键导航和普通浏览器标签页里系统不吃，这里自己认一次。
+  let touchStart = null;
+  root.addEventListener('touchstart', (e) => {
+    const t = e.touches?.[0];
+    touchStart = t ? { startX: t.clientX, startY: t.clientY } : null;
+  }, { passive: true });
+  root.addEventListener('touchend', (e) => {
+    const start = touchStart;
+    touchStart = null;
+    const t = e.changedTouches?.[0];
+    if (!start || !t || !inApp) return;
+    if (isBackSwipe({ ...start, endX: t.clientX, endY: t.clientY })) goBack();
+  }, { passive: true });
 
   function showUnlock(error = '', busy = false) {
+    inApp = false;
     renderUnlock(root, {
       error,
       busy,
@@ -58,6 +118,7 @@ export function start(root, provider, tts) {
   const clearPendingCode = () => localStorage.removeItem(PENDING_CODE_KEY);
 
   function showLogin(error = '', busy = false) {
+    inApp = false;
     renderLogin(root, {
       error,
       busy,
@@ -83,6 +144,7 @@ export function start(root, provider, tts) {
   }
 
   function showRegister(error = '', busy = false) {
+    inApp = false;
     renderRegister(root, {
       error,
       busy,
@@ -104,6 +166,7 @@ export function start(root, provider, tts) {
           if (status === 'active' || status === 'trial') {
             wordsByPack = await provider.getPacks();
             if (regRes && regRes.code) {
+              inApp = false;
               renderCodeIssued(root, { code: regRes.code, onNext: () => render() });
             } else {
               render();
@@ -128,6 +191,7 @@ export function start(root, provider, tts) {
     }
     // 用户刚手输的码优先级更高：失败重渲染不能把手输的值换回暂存码。
     const code = inputCode ?? pending?.code ?? '';
+    inApp = false;
     renderActivate(root, {
       error,
       busy,
@@ -143,7 +207,9 @@ export function start(root, provider, tts) {
           accountTrialEndsAt = trialEndsAt;
           clearPendingCode();
           wordsByPack = await provider.getPacks();
-          render();
+          // 激活成功不直接甩回首页：先给一页鼓励，点「开始学习」再进主界面。
+          inApp = false;
+          renderActivated(root, { onNext: () => render() });
         } catch (err) {
           showActivate(msg(err), false, typed);
         }
@@ -191,7 +257,7 @@ export function start(root, provider, tts) {
       root.innerHTML = '<div class="stack"><div class="crumb">'
         + '<button class="back">← 返回</button></div>'
         + `<p class="error">内容加载失败：${err.message || '请检查网络后重试'}</p></div>`;
-      root.querySelector('.back').addEventListener('click', () => { view = 'home'; render(); });
+      root.querySelector('.back').addEventListener('click', goHome);
     });
   }
 
@@ -212,12 +278,47 @@ export function start(root, provider, tts) {
     container.append(banner);
   }
 
+  // 缺印尼语音色提示：安卓不装「Google 语音服务」的印尼语数据包时，点朗读是纯静音、
+  // 不报错，用户只会以为软件坏了。等音色列表到齐后才敢下这个结论（voicesReady）。
+  function renderVoiceHint(container) {
+    if (voiceHintDismissed || !voicesReady) return;
+    if (tts.hasIndonesianVoice?.() !== false) return;
+    const hint = document.createElement('div');
+    hint.className = 'voice-hint';
+    hint.innerHTML = `
+      <span class="voice-hint-text">这台手机还没装印尼语语音包，朗读可能没声音。<br>
+        安装：设置 → 通用管理 / 系统 → 文字转语音（TTS）→ Google 语音服务 →
+        安装语音数据 → Bahasa Indonesia</span>
+      <button type="button" class="voice-hint-close" aria-label="知道了">知道了</button>`;
+    hint.querySelector('.voice-hint-close').addEventListener('click', () => {
+      voiceHintDismissed = true;
+      hint.remove();
+    });
+    container.append(hint);
+  }
+
+  // 桌面键：右下角常驻，一下回到首页。首页本身不画。
+  // PWA 全屏后没有浏览器地址栏，深到第四层时「回首页」原本要连点好几次返回。
+  function renderHomeKey(container) {
+    if (view === 'home') return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'home-key';
+    btn.setAttribute('aria-label', '回到首页');
+    btn.innerHTML = '<span class="home-key-glyph">⌂</span>';
+    btn.addEventListener('click', goHome);
+    container.append(btn);
+  }
+
   function mount(fn) {
     const main = document.createElement('div');
     root.innerHTML = '';
+    inApp = true;
     renderTrialBanner(root);
+    renderVoiceHint(root);
     root.append(main);
     fn(main);
+    renderHomeKey(root);
   }
 
   function render() {
@@ -225,10 +326,9 @@ export function start(root, provider, tts) {
       return mount((m) =>
         renderHome(m, {
           open: (id) => {
-            if (id === 'packs') view = 'levels';
-            else if (id === 'dialogs') view = 'dialogList';
-            else view = 'grammarList';
-            render();
+            if (id === 'packs') goTo('levels');
+            else if (id === 'dialogs') goTo('dialogList');
+            else goTo('grammarList');
           },
         }),
       );
@@ -239,8 +339,8 @@ export function start(root, provider, tts) {
         renderLevels(m, {
           levels: LEVELS,
           counts: levelCounts(),
-          back: () => { view = 'home'; render(); },
-          open: (id) => { level = id; view = 'grid'; render(); },
+          back: goBack,
+          open: (id) => { level = id; goTo('grid'); },
         }),
       );
     }
@@ -252,8 +352,8 @@ export function start(root, provider, tts) {
         renderPackGrid(m, {
           levelTitle: meta.title,
           packs,
-          back: () => { view = 'levels'; render(); },
-          open: (i) => { packId = packs[i].id; view = 'cards'; render(); },
+          back: goBack,
+          open: (i) => { packId = packs[i].id; goTo('cards'); },
         }),
       );
     }
@@ -264,8 +364,8 @@ export function start(root, provider, tts) {
         renderPack(m, {
           pack,
           tts,
-          back: () => { view = 'grid'; render(); },
-          onComplete: () => { view = 'congrats'; render(); },
+          back: goBack,
+          onComplete: () => goTo('congrats'),
         }),
       );
     }
@@ -286,12 +386,12 @@ export function start(root, provider, tts) {
         renderCongrats(m, {
           pack: opened[at],
           nextLabel,
-          back: () => { view = 'grid'; render(); },
+          // 恭喜页与词卡同层（都挂在包网格底下），返回一律回到包网格。
+          back: () => goUp('grid'),
           next: () => {
-            if (!isLast) { packId = opened[at + 1].id; view = 'cards'; }
-            else if (nextHasPacks) { level = nextLevel; view = 'grid'; }
-            else { view = 'levels'; }
-            render();
+            if (!isLast) { packId = opened[at + 1].id; goTo('cards'); }
+            else if (nextHasPacks) { level = nextLevel; goUp('grid'); }
+            else { goUp('levels'); }
           },
         }),
       );
@@ -301,8 +401,8 @@ export function start(root, provider, tts) {
       return guard(provider.getDialogs(), (dialogs) =>
         mount((m) =>
           renderDialogList(m, dialogs, {
-            back: () => { view = 'home'; render(); },
-            open: (id) => { detailId = id; view = 'dialogDetail'; render(); },
+            back: goBack,
+            open: (id) => { detailId = id; goTo('dialogDetail'); },
           }),
         ),
       );
@@ -313,7 +413,7 @@ export function start(root, provider, tts) {
         mount((m) =>
           renderDialog(m, dialogs.find((d) => d.id === detailId), {
             tts,
-            back: () => { view = 'dialogList'; render(); },
+            back: goBack,
           }),
         ),
       );
@@ -323,8 +423,8 @@ export function start(root, provider, tts) {
       return guard(provider.getGrammar(), (grammar) =>
         mount((m) =>
           renderGrammarList(m, grammar, {
-            back: () => { view = 'home'; render(); },
-            open: (id) => { detailId = id; view = 'grammarModule'; render(); },
+            back: goBack,
+            open: (id) => { detailId = id; goTo('grammarModule'); },
           }),
         ),
       );
@@ -335,7 +435,7 @@ export function start(root, provider, tts) {
         mount((m) =>
           renderGrammarModule(m, grammar.find((g) => g.id === detailId), {
             tts,
-            back: () => { view = 'grammarList'; render(); },
+            back: goBack,
           }),
         ),
       );
@@ -370,6 +470,7 @@ export function start(root, provider, tts) {
   }
 
   function showContentRetry() {
+    inApp = false;
     root.innerHTML = '<div class="stack">'
       + '<p class="error">内容暂时读取失败，请检查网络后重试</p>'
       + '<button class="retry">重试</button></div>';
@@ -377,6 +478,8 @@ export function start(root, provider, tts) {
   }
 
   (async () => {
+    // 首页那条记录要带上 view，不然从深层 go(-n) 回来时 popstate 拿到的是 null state。
+    hist?.replaceState?.({ view: 'home' }, '');
     try {
       const { unlocked, status, email, trialEndsAt } = await provider.init();
       sessionEmail = email ? normalizeEmail(email) : null; // provider 已归一化，这里再做一次保险，防旧会话数据是原样存的
@@ -393,6 +496,7 @@ export function start(root, provider, tts) {
       }
       await loadPacksAfterUnlock();
     } catch (err) {
+      inApp = false;
       root.innerHTML = `<p class="error">加载失败：${err.message || '内容读取出错'}</p>`;
     }
   })();

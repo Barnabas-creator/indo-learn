@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="词缀">
+  <!-- 词缀篇：中间是词根，左右各扣上一个前缀与后缀 -->
+  <rect x="70" y="74" width="60" height="52" rx="14" fill="#2f5d4f"/>
+  <rect x="84" y="94" width="32" height="10" rx="5" fill="#fbf9f2" opacity=".9"/>
+  <path d="M18 74h34a10 10 0 0 1 10 10v6h-6a10 10 0 0 0 0 20h6v6a10 10 0 0 1-10 10H18z" fill="#b4552d"/>
+  <path d="M182 74h-34a10 10 0 0 0-10 10v6h6a10 10 0 0 1 0 20h-6v6a10 10 0 0 0 10 10h34z" fill="#c9a227"/>
+  <g fill="#fbf9f2" opacity=".85">
+    <rect x="26" y="94" width="22" height="9" rx="4.5"/>
+    <rect x="152" y="94" width="22" height="9" rx="4.5"/>
+  </g>
+  <g fill="none" stroke="#2f5d4f" stroke-linecap="round" stroke-width="6" opacity=".45">
+    <path d="M100 140v18"/><path d="M74 140l-14 16"/><path d="M126 140l14 16"/>
+  </g>
+</svg>

@@ -9,7 +9,7 @@
 |---|---|
 | 单词包 | 初级 102 包 + 中级 100 包 = 2020 词条（词 + 词性 + 中文释义 + 例句 + 例句翻译）；高级 60 包只有主题骨架 |
 | 场景对话 | 25 组 / 364 轮。每组含场景说明、12–16 轮对话、6 条关键句（标可替换部分）、8 个生词、2–3 条本地贴士 |
-| 语法学习 | 8 个模块 / 61 课 / 217 条词缀条目（meN- / ber- / ter- / peN- / di- 体系） |
+| 语法学习 | 4 篇 / 89 课 / 519 条，全部转写自《我的第一本印尼语文法》（发音 / 基础 / 词缀 / 语法） |
 | 配图 | 557 个 OpenMoji SVG，词条专属配图覆盖 1465/2020（73%），其余走主题图（每个主题都有专属图）|
 
 ## 授权模式
@@ -321,12 +321,118 @@ D1 里还是旧版本的密钥，前端会先拿旧密钥去解新密文（失�
 `push-content-key.mjs` 每次是**新增一行密钥并把旧行标记为非当前**（新旧密钥短暂并存），
 所以第 2 步可以放心提前做，不会破坏还在用旧版本的客户端。
 
-第 3 步（升级 `sw.js` 缓存名）漏了的后果：Service Worker 会继续用缓存里的旧 `app.js`/
-视图文件，用户即使刷新页面也可能感知不到代码层面的更新（内容本身因为
-`data/manifest.json` 是 network-first，通常还是能拿到新版本，但不能依赖这一点掩盖
-该升级缓存名的事实）。
+第 3 步（升级 `sw.js` 缓存名）漏了的后果：只有 `install` 时预缓存的清单不会更新，
+**不会**再把用户钉在旧代码上——外壳（`index.html` / `app.js` / `lib/**` / `styles.css`）
+现在是 network-first（见下节）。新增/删除外壳文件时仍然要改缓存名，因为 `SHELL`
+数组变了；只改代码内容时改不改都行。
+
+### 缓存策略：为什么外壳是 network-first
+
+`sw.js` 把请求分成三类：
+
+| 类型 | 策略 | 原因 |
+|---|---|---|
+| `data/manifest.json`、`data/keys.json` | network-first | 密码轮换靠它们生效 |
+| `data/<version>/*.enc`、`assets/**` | cache-first | URL 变了内容才会变，是离线体积的大头 |
+| 其余（外壳：html / js / css / webmanifest） | network-first | URL 不带版本号但内容会变 |
+
+外壳原本是 cache-first，代价在 2026-08 暴露出来：前端早就发了「注册即送 7 天试用」
+那一版，但 `sw.js` 的 `CACHE` 名从「接入账号 + 激活码登录流程」之后就没再动过，
+装过 PWA 的安卓手机一直在跑旧的 `app.js`——注册完不给试用、被强制要激活码才能进。
+改成 network-first 之后，只要联得上网就一定拿新代码，断网才回落缓存，离线可用不受影响。
+
+**已经中招的手机怎么恢复**：联网打开一次（新的 Service Worker 会安装并接管），
+再打开第二次就是新代码了。急的话直接在浏览器里清掉该站点数据，或卸载重装 PWA。
 
 `password` 模式（`AUTH_MODE = 'password'`）不涉及 D1，跳过第 2 步即可，只走 1、3、4。
+
+## 语法内容：《我的第一本印尼语文法》
+
+语法模块的内容全部转写自这本书（台湾版，繁体中文，`D:\01Christ\03YNB学习\03印尼语\我的第一本印尼语文法.pdf`）。
+2026-08-27 整本替换掉了原先从小程序 `curriculum.js` 扒来的 8 模块 / 61 课 / 217 条。
+
+| | 旧（小程序） | 新（书） |
+|---|---|---|
+| 规模 | 8 模块 / 61 课 / 217 条 | 4 篇 / 89 课 / 519 条 |
+| 覆盖词缀 | meN- / ber- / ter- / peN- / di- 五个 | 16 个，是超集 |
+| 除词缀外 | 无 | 发音篇、基础篇、语法篇（疑问 / 被动 / yang / 命令 / 比较 / 介词 / 连接词）|
+| 出处 | 来路不明 | 正式出版物 |
+
+> [!warning] 这本书是纯扫描件，没有文字层
+> 每页都是 4280×3070 的 1-bit 黑白扫描图，`extract_text()` 全部返回空——抽不了文字，
+> 只能逐页看图转写。整本 127 个 PDF 页（跨页排版，约 254 个书页）。好消息是书签完好，
+> 44 条，整本目录白送。要补内容时照着书签定位页码即可。
+
+**转写约定**（以后续写务必沿用）：
+
+- 繁体转简体，台湾用语换成大陆说法：文法→语法、子音→辅音、母音→元音、書面體→书面语、
+  受詞→宾语、主詞→主语、字根→词根、前綴詞→前缀。
+- 书上用注音符号标发音，对大陆用户没用，一律换成拼音式的近似音（C 念 ce「册」）。
+- 发现书里的错字直接改：`Kalimatan Timur` → `Kalimantan Timur`。
+- 例句、中译、生词注全部照搬原书，不自己造句；只有书上没给例句的对照表条目才补写。
+
+### 分文件写 + 合并
+
+一节一个文件，放 `content-src/grammar-book/`（`.gitignore` 里，明文不进仓库）：
+
+```
+00-modules.json          四篇的元信息 + 文件名前缀
+phonetic-01-alphabet.json
+basic-01-panggilan.json
+affix-01-ber.json …… affix-16-bare-verbs.json
+syntax-01-question.json …… syntax-08-conjunction.json
+```
+
+文件名前缀决定落进哪一篇，篇内按文件名排序。合并：
+
+```bash
+node tools/merge-grammar-book.mjs   # -> content-src/grammar.json
+node tools/check-content.mjs        # validateGrammar 会查字段缺失、id 重复、例句是不是误填了中文
+```
+
+没有任何课的篇不会输出——转写还没做到的篇不该在 UI 上占一行「0 课」。
+
+### 配图
+
+语法讲的都是抽象的东西（词缀、语序、从句），没有实物可画，所以四篇各配一张
+手写的 SVG，放 `assets/grammar-svg/book/`（`phonetic` / `basic` / `affix` / `syntax`），
+由 `lib/views/grammar.js` 的 `visualFor()` 解析，找不到就退回 `affix.svg`，绝不挂断链。
+配色沿用 app 的苔绿 / 丁香棕 / 金——都是中间调，浅底深底都看得清，所以不随主题切换。
+
+（`assets/grammar-svg/` 下的 `modules/` `lessons/` `builders/` `scenes/` 是从小程序扒来的旧图，
+对应已经删掉的 8 模块结构，现在没人引用，留着只是因为 `tools/extract-grammar.mjs` 会重新拷贝。）
+
+## 朗读（TTS）
+
+用浏览器自带的 Web Speech API，不打包任何音频。音色由系统提供：
+
+- iOS Safari 自带 id-ID（Damayanti），开箱即用。
+- **安卓要手动装印尼语数据包**：设置 → 通用管理 / 系统 → 文字转语音（TTS）→
+  Google 语音服务 → 安装语音数据 → Bahasa Indonesia。没装就是纯静音、不报错。
+  应用检测到没有印尼语音色时会在主界面顶部挂一条提示（`.voice-hint`），写明上面这串路径。
+
+`lib/tts.js` 另外挡掉两个安卓上会导致「点朗读没声音」的坑，改动时别退回去：
+
+- `getVoices()` 首次同步调用返回空数组，音色要等 `voiceschanged` 才到齐；早于它
+  `speak()` 会静音。所以音色没就绪时先等（最多 2 秒兜底）。
+- Chrome 的老问题：`cancel()` 之后立刻 `speak()`，这条会被丢掉。所以只有确实在播时
+  才 `cancel()`，并且隔 `CANCEL_GAP_MS` 再发。
+- 但「音色已就绪且当前没在播」这条最常见路径必须保持**同步**发声：iOS Safari 要求
+  首次 `speak()` 落在用户手势的同步调用栈里，一律 `setTimeout` 会把 iOS 弄哑。
+
+## 导航：返回手势与桌面键
+
+层级关系在 `lib/nav.js` 的 `PARENT` 表里，`app.js` 据此把 history 记录与层深一一对应：
+下钻 `pushState`，同层（词卡 → 恭喜页）`replaceState`，上行一律 `history.go(-n)`，
+`popstate` 里统一改 `view`。这样四件事走的是同一条路、history 也不会越点越深：
+
+- 安卓手势导航的**左边缘右滑**（系统返回手势，网页拦不住，只会触发 popstate）
+- 安卓**返回键**
+- 页内的「← 返回」按钮
+- 右下角的**桌面键**（`.home-key`，一下回首页；首页本身不画）
+
+三键导航和普通浏览器标签页里系统不吃这个手势，`isBackSwipe()` 自己认一次作为补充
+（起点必须落在左边缘 32px 内，避免跟词卡翻面、横向滚动抢）。
 
 ## 紧急回退到共享密码模式
 
@@ -398,18 +504,20 @@ node tools/push-content-key.mjs --password '密码'  # remote 模式：把新密
 | `lib/crypto.js` | AES-GCM / PBKDF2，浏览器与 Node 共用 |
 | `lib/provider.js` | `password` 模式的内容访问接口、解锁凭据管理（有效期 30 天） |
 | `lib/remote-provider.js` | `remote` 模式的内容访问接口：账号登录 + 服务器下发密钥 |
-| `lib/tts.js` | Web Speech `id-ID` 封装 |
+| `lib/tts.js` | Web Speech `id-ID` 封装，含安卓静音坑的规避（见「朗读（TTS）」） |
+| `lib/nav.js` | 层级父子关系 + 左边缘返回手势判定（见「导航」） |
 | `lib/icons.js` / `lib/emoji-map.js` | 词 → OpenMoji 映射，三级回退 |
 | `lib/views/` | 视图：解锁（旧模式）、注册/登录/激活（`auth.js`，新模式）、单词包、对话、语法 |
 | `server/` | Cloudflare Workers + D1 后端：`src/routes.js`（五个接口：`POST /register`、`POST /login`、`POST /activate`、`POST /request-code`、`GET /content-key`）、`src/crypto.js`（密码哈希/令牌）、`src/codes.js`（激活码生成/哈希）、`src/db.js`（SQL 封装）、`schema.sql`（建表）、`wrangler.toml`（部署配置） |
 | `tools/` | 提取、生成、校验、打包脚本（本机运行） |
+| `tools/merge-grammar-book.mjs` | 把 `content-src/grammar-book/*.json` 合并成 `grammar.json`（见「语法内容」） |
 | `tools/push-content-key.mjs` | 把内容密钥灌进 D1（发布流程第 2 步，见上） |
 | `tools/issue-code.mjs` | 卖码模式下本地批量生成激活码，明文只打印一次 |
 | `tools/admin.mjs` | 运维：查账号、停用/启用、重置密码、查激活码绑定、清理僵尸码（`--stale`/`prune-codes`） |
 | `content-src/` | 明文内容，**不提交** |
 | `reference/` | 参考资料，**不提交** |
 | `data/` | 加密产物，提交并发布 |
-| `sw.js` | Service Worker，缓存策略见文件内注释 |
+| `sw.js` | Service Worker，缓存策略见「缓存策略：为什么外壳是 network-first」 |
 
 ## 关于内容质量
 

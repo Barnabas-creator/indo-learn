@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validatePacks, validateDialogs } from './check-content.mjs';
+import { validatePacks, validateDialogs, validateGrammar } from './check-content.mjs';
 
 const good = [
   {
@@ -196,4 +196,53 @@ test('短语词条要求例句用到每一个词', () => {
     words: [{ id: 'p-1', word: 'uang muka', pos: '名词', zh: '首付', example: 'Uang muka motor itu besar.', exampleZh: '那辆摩托首付很高。' }],
   }];
   assert.deepEqual(validatePacks(packs).filter((x) => /例句未包含/.test(x)), []);
+});
+
+// --- 语法（《我的第一本印尼语文法》转写产物）---
+
+const opt = (over = {}) => ({
+  label: 'ber-', result: 'berjalan', meaning: '走路',
+  example: 'Saya berjalan kaki.', translation: '我走路。', ...over,
+});
+const lesson = (over = {}) => ({ id: 'ber', title: '前缀 ber-', options: [opt()], ...over });
+const mod = (over = {}) => ({
+  id: 'affix', number: '03', title: '词缀篇', subtitle: 's', lessons: [lesson()], ...over,
+});
+
+test('结构完整的语法模块没有问题', () => {
+  assert.deepEqual(validateGrammar([mod()]), []);
+});
+
+test('模块缺字段会被报出来', () => {
+  const p = validateGrammar([mod({ subtitle: '' })]);
+  assert.equal(p.length, 1);
+  assert.match(p[0], /缺字段 subtitle/);
+});
+
+test('空模块与空课都报错', () => {
+  assert.match(validateGrammar([mod({ lessons: [] })])[0], /没有课/);
+  assert.match(validateGrammar([mod({ lessons: [lesson({ options: [] })] })])[0], /没有条目/);
+});
+
+// 视图直接把这五个字段插进 DOM，缺一个就渲染出空行。
+test('条目缺任一必填字段都报错', () => {
+  for (const f of ['label', 'result', 'meaning', 'example', 'translation']) {
+    const p = validateGrammar([mod({ lessons: [lesson({ options: [opt({ [f]: '' })] })] })]);
+    assert.equal(p.length, 1, f);
+    assert.match(p[0], new RegExp(`缺字段 ${f}`));
+  }
+});
+
+test('课 id 跨模块重复会被报出来', () => {
+  const p = validateGrammar([mod(), mod({ id: 'syntax', number: '04' })]);
+  assert.ok(p.some((x) => /课 ber 在 affix 与 syntax 重复/.test(x)));
+});
+
+// 把中文译文误填进 example 栏是转写时最容易犯的错。
+test('例句里没有印尼语（整条都是中文）会被报出来', () => {
+  const p = validateGrammar([
+    mod({ lessons: [lesson({ options: [opt({ example: '我走路。' })] })] }),
+  ]);
+  assert.equal(p.length, 1);
+  assert.match(p[0], /例句里没有印尼语/);
 });

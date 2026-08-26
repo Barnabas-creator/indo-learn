@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="语法">
+  <!-- 语法篇：一句话被括号框住，下面挂着从句与连接线 -->
+  <path d="M46 44c-16 0-26 10-26 26v20c0 8-5 12-12 12 7 0 12 4 12 12v20c0 16 10 26 26 26"
+        fill="none" stroke="#b4552d" stroke-width="10" stroke-linecap="round"/>
+  <path d="M154 44c16 0 26 10 26 26v20c0 8 5 12 12 12-7 0-12 4-12 12v20c0 16-10 26-26 26"
+        fill="none" stroke="#b4552d" stroke-width="10" stroke-linecap="round"/>
+  <rect x="58" y="60" width="84" height="24" rx="8" fill="#2f5d4f"/>
+  <g fill="none" stroke="#2f5d4f" stroke-width="6" opacity=".55">
+    <path d="M100 84v20"/><path d="M76 124v-8a12 12 0 0 1 12-12h24a12 12 0 0 1 12 12v8"/>
+  </g>
+  <rect x="58" y="124" width="36" height="22" rx="8" fill="#c9a227"/>
+  <rect x="106" y="124" width="36" height="22" rx="8" fill="#c9a227"/>
+  <g fill="#fbf9f2" opacity=".9">
+    <rect x="72" y="68" width="56" height="8" rx="4"/>
+    <rect x="66" y="131" width="20" height="8" rx="4"/>
+    <rect x="114" y="131" width="20" height="8" rx="4"/>
+  </g>
+</svg>

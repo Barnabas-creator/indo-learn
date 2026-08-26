@@ -186,6 +186,50 @@ export function validateDialogs(dialogs) {
   return problems;
 }
 
+// 语法（《我的第一本印尼语文法》转写产物）。字段缺失最致命——视图直接把
+// option 的五个字段插进 DOM，缺一个就渲染出空行，用户看不出是内容问题还是 bug。
+export function validateGrammar(modules) {
+  const problems = [];
+  const seenModules = new Set();
+  const seenLessons = new Map();
+
+  for (const m of modules ?? []) {
+    if (seenModules.has(m?.id)) problems.push(`模块 ${m.id} 重复出现`);
+    seenModules.add(m?.id);
+    for (const f of ['id', 'number', 'title', 'subtitle']) {
+      if (!m?.[f]) problems.push(`模块 ${m?.id ?? '?'} 缺字段 ${f}`);
+    }
+
+    const lessons = m?.lessons ?? [];
+    if (!lessons.length) problems.push(`模块 ${m?.id} 没有课`);
+
+    for (const l of lessons) {
+      for (const f of ['id', 'title']) {
+        if (!l?.[f]) problems.push(`模块 ${m?.id} 的课 ${l?.id ?? '?'} 缺字段 ${f}`);
+      }
+      const first = seenLessons.get(l?.id);
+      if (first) problems.push(`课 ${l.id} 在 ${first} 与 ${m?.id} 重复`);
+      else if (l?.id) seenLessons.set(l.id, m?.id);
+
+      const options = l?.options ?? [];
+      if (!options.length) problems.push(`课 ${l?.id} 没有条目`);
+
+      for (const o of options) {
+        for (const f of ['label', 'result', 'meaning', 'example', 'translation']) {
+          if (!o?.[f]) {
+            problems.push(`课 ${l?.id} 的条目 ${o?.label ?? '?'} 缺字段 ${f}`);
+          }
+        }
+        // 例句必须是印尼语。整条没有一个拉丁字母，多半是把中文译文填错栏了。
+        if (o?.example && !/[a-zA-Z]/.test(o.example)) {
+          problems.push(`课 ${l?.id} 的条目 ${o.label} 例句里没有印尼语：${o.example}`);
+        }
+      }
+    }
+  }
+  return problems;
+}
+
 const isMain = process.argv[1] === fileURLToPath(import.meta.url);
 if (isMain) {
   const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -200,6 +244,7 @@ if (isMain) {
   const skeleton = readOrEmpty('skeleton.json', []);
   const words = readOrEmpty('words.json', {});
   const dialogs = readOrEmpty('dialogs.json', []);
+  const grammar = readOrEmpty('grammar.json', []);
 
   // 只校验已填词的包 —— 没填词的是「准备中」，不是错误
   const packs = skeleton
@@ -213,6 +258,7 @@ if (isMain) {
     ...validatePacks(packs),
     ...validateNoCrossLevelDupes(packs),
     ...validateDialogs(dialogs),
+    ...validateGrammar(grammar),
   ];
   const warnings = checkExampleVocabulary(
     packs.filter((p) => p.level !== 'beginner'),
