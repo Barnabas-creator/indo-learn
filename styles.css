@@ -81,6 +81,8 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 }
 
 .card-head .play-all { margin-left: auto; color: var(--clove); background: var(--clove-soft); }
+/* 顶栏里若已有「全文」按钮把空间推开了，桌面键就不再抢 margin-left:auto */
+.card-head .play-all ~ .home-key { margin-left: 0; }
 
 .error { padding: 40px 16px; text-align: center; color: var(--clove); }
 
@@ -138,28 +140,26 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
   border-radius: 999px;
 }
 
-/* 桌面键：右下角常驻，一下回到首页。PWA 全屏后没有地址栏，深层返回要点好几次 */
+/* 桌面键：挂在顶栏返回键的右边，跟着页面滚，不悬浮 */
 .home-key {
-  position: fixed;
-  right: calc(14px + env(safe-area-inset-right));
-  bottom: calc(20px + env(safe-area-inset-bottom));
-  z-index: 20;
-  width: 48px;
-  height: 48px;
+  margin-left: auto;
+  flex: none;
   display: flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 50%;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--card);
   color: var(--moss);
-  box-shadow: var(--shadow);
+  font-size: 13px;
   -webkit-tap-highlight-color: transparent;
 }
 
-.home-key:active { transform: scale(.94); }
+.home-key:active { transform: scale(.96); }
 
-.home-key-glyph { font-size: 24px; line-height: 1; }
+.home-key-glyph { font-size: 15px; line-height: 1; }
+.home-key-text { font-size: 13px; }
 
 /* 激活成功后的鼓励页 */
 .activated { text-align: center; }
@@ -436,65 +436,136 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
   color: var(--moss); line-height: 1.2; min-width: 26px;
 }
 .unit-body, .lesson-body { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.unit-title, .lesson-name { font-size: 16px; font-weight: 650; color: var(--ink); }
-.unit-title-id { font-family: var(--serif); font-size: 13px; color: var(--clove); }
-.unit-goal, .lesson-task { font-size: 12.5px; line-height: 1.55; color: var(--mute); }
+.unit-title, .lesson-name { font-size: 17px; font-weight: 650; color: var(--ink); }
+.unit-title-id { font-family: var(--serif); font-size: 13.5px; color: var(--clove); }
+.unit-goal, .lesson-task { font-size: 13px; line-height: 1.6; color: var(--mute); }
 .unit-count, .lesson-meta { flex: none; font-size: 12px; color: var(--clove); padding-top: 3px; }
 
-.unit-goal-full { font-size: 13.5px; line-height: 1.7; color: var(--ink-2); padding: 0 4px 4px; }
-.lesson-task-full { font-size: 13.5px; color: var(--mute); padding: 0 18px 12px; }
+.unit-goal-full { font-size: 14px; line-height: 1.7; color: var(--ink-2); padding: 0 4px 4px; }
 
-.course-view { padding-bottom: 40px; }
-.course-head-title { flex: 1; min-width: 0; }
-.course-block {
-  margin: 0 12px 14px; padding: 16px; border-radius: 18px;
-  background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow);
+/* —— 左右翻页容器 —— 一屏一块，字号才放得开 */
+.pager { display: flex; flex-direction: column; }
+
+.pager-track {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain; /* 翻到头别把整页往回拽 */
 }
-.block-title {
-  font-family: var(--serif); font-size: 16px; margin: 0 0 12px;
-  color: var(--ink); padding-bottom: 8px; border-bottom: 1px solid var(--line);
+.pager-track::-webkit-scrollbar { display: none; }
+
+.pager-page { flex: 0 0 100%; scroll-snap-align: start; padding: 0 12px 8px; }
+
+.pager-page-inner {
+  min-height: 62vh;
+  padding: 18px;
+  border-radius: 20px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
 }
 
-.word-chips { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; }
+.pager-title {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--serif); font-size: 19px; margin: 0 0 16px;
+  color: var(--ink); padding-bottom: 10px; border-bottom: 1px solid var(--line);
+}
+.pager-icon { font-size: 20px; }
+
+/* 翻页条吸在屏幕底部：内容长的时候不用滚到最底才够得着 */
+.pager-nav {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 6px;
+  padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+  background: var(--paper);
+  border-top: 1px solid var(--line);
+}
+.pager-dot, .pager-step {
+  min-width: 34px; height: 34px; padding: 0 8px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 999px; border: 1px solid var(--line);
+  background: var(--card); color: var(--mute); font-size: 15px;
+  -webkit-tap-highlight-color: transparent;
+}
+.pager-dot.on { background: var(--moss); border-color: var(--moss); color: #fff; }
+@media (prefers-color-scheme: dark) { .pager-dot.on { color: #10130f; } }
+.pager-dot:active, .pager-step:active { transform: scale(.94); }
+.pager-count { font-size: 15px; color: var(--ink-2); padding: 0 14px; }
+.pager-count b { font-family: var(--serif); font-size: 18px; color: var(--moss); }
+.dot-icon { line-height: 1; }
+
+/* —— 课文页的四块 —— */
+.course-view, .grammar-view { padding-bottom: 8px; }
+.course-head-title, .grammar-head-title { flex: 1; min-width: 0; }
+
+.word-chips { list-style: none; display: flex; flex-direction: column; gap: 10px; }
 .word-chip {
-  display: flex; flex-direction: column; gap: 1px; cursor: pointer;
-  padding: 7px 12px; border-radius: 12px; background: var(--moss-soft);
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  padding: 12px 14px; border-radius: 14px; background: var(--moss-soft);
 }
-.word-chip:active { transform: scale(.96); }
-.chip-id { font-family: var(--serif); font-size: 14px; color: var(--moss); font-weight: 600; }
-.chip-zh { font-size: 11.5px; color: var(--ink-2); }
+.word-chip:active { transform: scale(.98); }
+.chip-id { font-family: var(--serif); font-size: 19px; color: var(--moss); font-weight: 650; flex: none; }
+.chip-zh { font-size: 14.5px; color: var(--ink-2); flex: 1; min-width: 0; }
+.chip-play { font-size: 15px; opacity: .55; flex: none; }
 
-.scene-lines { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+.scene-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.scene-where { flex: 1; font-size: 14px; color: var(--mute); }
+.play-all {
+  flex: none; font-size: 13px; color: var(--clove);
+  background: var(--clove-soft); padding: 6px 12px; border-radius: 999px;
+}
+
+.scene-lines { list-style: none; display: flex; flex-direction: column; gap: 16px; }
 .scene-line { display: flex; gap: 10px; align-items: flex-start; }
 .line-speaker {
-  flex: none; font-size: 11px; color: var(--clove); background: var(--clove-soft);
-  padding: 3px 8px; border-radius: 999px; margin-top: 2px; max-width: 92px;
+  flex: none; font-size: 11.5px; color: var(--clove); background: var(--clove-soft);
+  padding: 4px 9px; border-radius: 999px; margin-top: 3px; max-width: 88px;
 }
 .line-body { flex: 1; min-width: 0; }
 .line-id {
   display: block; width: 100%; text-align: left; font-family: var(--serif);
-  font-size: 15.5px; line-height: 1.5; color: var(--ink);
+  font-size: 18px; line-height: 1.55; color: var(--ink);
 }
 .line-id:active { color: var(--moss); }
-.line-zh { font-size: 12.5px; color: var(--mute); margin-top: 2px; }
+.line-zh { font-size: 14px; color: var(--mute); margin-top: 4px; line-height: 1.6; }
 
-.point { padding: 10px 0; border-top: 1px solid var(--line); }
-.point:first-of-type { border-top: none; padding-top: 0; }
-.point-title { font-size: 14px; font-weight: 650; color: var(--moss); margin-bottom: 4px; }
-.point-body { font-size: 13px; line-height: 1.75; color: var(--ink-2); }
+/* —— 要点：一根竖脊 + 分枝，读起来像展开的思维导图 —— */
+.mind-root {
+  display: inline-block; padding: 9px 14px; border-radius: 999px;
+  background: var(--moss); color: #fff; font-size: 14.5px; font-weight: 600;
+}
+@media (prefers-color-scheme: dark) { .mind-root { color: #10130f; } }
 
-.quiz { padding: 12px 0; border-top: 1px solid var(--line); }
+.mind-branches { list-style: none; margin: 4px 0 0 15px; padding-left: 20px; border-left: 2px solid var(--line); }
+.mind-branch { position: relative; padding: 16px 0 0; }
+.mind-node {
+  position: absolute; left: -31px; top: 16px;
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--card); border: 2px solid var(--moss);
+  color: var(--moss); font-size: 12px; font-weight: 700;
+}
+.mind-leaf { padding-left: 2px; }
+.point-title { font-size: 16px; font-weight: 650; color: var(--moss); margin-bottom: 5px; }
+.point-body { font-size: 14.5px; line-height: 1.8; color: var(--ink-2); }
+
+/* —— 小测 —— */
+.quiz { padding: 14px 0; border-top: 1px solid var(--line); }
 .quiz:first-of-type { border-top: none; padding-top: 0; }
-.quiz-prompt { font-size: 14px; font-weight: 600; color: var(--ink); }
-.quiz-context { font-size: 12px; color: var(--mute); margin-top: 3px; }
-.quiz-choices { list-style: none; display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.quiz-prompt { font-size: 16px; font-weight: 600; color: var(--ink); line-height: 1.6; }
+.quiz-context { font-size: 13px; color: var(--mute); margin-top: 5px; }
+.quiz-choices { list-style: none; display: flex; flex-direction: column; gap: 9px; margin-top: 12px; }
 .choice {
-  width: 100%; text-align: left; padding: 11px 14px; border-radius: 13px;
-  font-size: 14px; background: var(--card-2); border: 1px solid var(--line); color: var(--ink);
+  width: 100%; text-align: left; padding: 13px 15px; border-radius: 14px;
+  font-size: 15.5px; background: var(--card-2); border: 1px solid var(--line); color: var(--ink);
 }
 .choice.picked.right { background: var(--moss-soft); border-color: var(--moss); color: var(--moss); font-weight: 600; }
 .choice.picked.wrong { background: var(--clove-soft); border-color: var(--clove); color: var(--clove); }
-.quiz-why { font-size: 12.5px; line-height: 1.6; margin-top: 8px; min-height: 0; }
+.quiz-why { font-size: 14px; line-height: 1.7; margin-top: 10px; }
 .quiz-why.right { color: var(--moss); }
 .quiz-why.wrong { color: var(--clove); }
 
@@ -507,21 +578,29 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .grammar-title { font-size: 16px; font-weight: 650; }
 .grammar-subtitle { font-size: 12px; color: var(--mute); }
 
-.lesson { margin-bottom: 18px; padding: 15px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
-.lesson-title { margin: 0 0 6px; font-size: 17px; }
-.lesson-base { margin: 0 0 4px; font-family: var(--serif); font-size: 15px; color: var(--clove); }
-.lesson-instruction { margin: 0 0 12px; font-size: 13px; color: var(--mute); }
-.lesson-tip { margin: 12px 0 0; font-size: 13px; color: var(--mute); }
+/* 语法一课的正文。现在一课就是翻页里的一张卡，外框由 .pager-page-inner 提供，
+   .lesson 那层多余的卡片壳就去掉了。字号整体放大一档——一屏只放一课，放得开。 */
+.lesson-base { margin: 0 0 6px; font-family: var(--serif); font-size: 16.5px; color: var(--clove); }
+.lesson-instruction { margin: 0 0 14px; font-size: 14.5px; line-height: 1.75; color: var(--ink-2); }
+.lesson-tip {
+  margin: 16px 0 0; padding: 11px 13px; font-size: 14px; line-height: 1.75;
+  color: var(--ink-2); background: var(--card-2); border-left: 3px solid var(--gold); border-radius: 6px;
+}
 
-.options { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.option { padding: 12px; background: var(--card-2); border-radius: 12px; }
-.option-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.option-label { padding: 2px 9px; font-size: 12px; font-weight: 600; color: #fff; background: var(--moss); border-radius: 999px; }
-.option-result { flex: 1; font-family: var(--serif); font-size: 17px; font-weight: 650; }
-.option-meaning { font-size: 14px; margin-bottom: 6px; }
-.option-example { font-family: var(--serif); font-size: 15px; line-height: 1.45; }
-.option-translation { font-size: 13px; color: var(--mute); }
-.option-note { margin-top: 6px; padding: 6px 9px; font-size: 12px; color: var(--mute); background: var(--card); border-left: 3px solid var(--gold); border-radius: 4px; }
+.options { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.option { padding: 14px; background: var(--card-2); border-radius: 14px; }
+.option-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.option-label { padding: 3px 10px; font-size: 13px; font-weight: 600; color: #fff; background: var(--moss); border-radius: 999px; }
+.option-arrow { color: var(--mute); font-size: 14px; }
+.option-result { flex: 1; min-width: 0; font-family: var(--serif); font-size: 19px; font-weight: 650; }
+.speak-option { flex: none; font-size: 15px; opacity: .6; }
+.option-meaning { font-size: 15px; margin-bottom: 8px; color: var(--ink); }
+.option-example { font-family: var(--serif); font-size: 17px; line-height: 1.55; }
+.option-translation { font-size: 14px; color: var(--mute); margin-top: 3px; line-height: 1.6; }
+.option-note {
+  margin-top: 9px; padding: 8px 11px; font-size: 13px; line-height: 1.7;
+  color: var(--mute); background: var(--card); border-left: 3px solid var(--gold); border-radius: 4px;
+}
 
 @media (prefers-color-scheme: dark) { .option-label { color: #10130f; } }
 

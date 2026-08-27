@@ -64,25 +64,40 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
   const goBack = () => { const parent = parentView(view); if (parent) goUp(parent); };
   const goHome = () => goUp('home');
 
+  // 系统刚刚处理过一次返回的时间戳。手势导航的安卓机上，左边缘右滑会被系统
+  // 吃掉并触发 popstate——但浏览器仍会把这串 touch 事件发给页面，于是下面的
+  // isBackSwipe 又认一次，一个手势退了两级（这就是「有时候直接跳回菜单」）。
+  // popstate 之后压一小段静默期，系统已经退过了就不再自己退。
+  let systemBackAt = 0;
+  const SYSTEM_BACK_QUIET_MS = 700;
+
   win?.addEventListener?.('popstate', (e) => {
     if (!inApp) return; // 停在登录/激活页时不接管，让浏览器按自己的来
+    systemBackAt = Date.now();
     view = e?.state?.view ?? 'home';
     tts.stop();
     render();
   });
 
-  // 手势导航的安卓机上，左边缘右滑已经被系统吃掉了（走上面的 popstate）；
-  // 三键导航和普通浏览器标签页里系统不吃，这里自己认一次。
+  // 三键导航和普通浏览器标签页里系统不吃这个手势，这里自己认一次。
   let touchStart = null;
   root.addEventListener('touchstart', (e) => {
     const t = e.touches?.[0];
-    touchStart = t ? { startX: t.clientX, startY: t.clientY } : null;
+    // 多指（缩放、双指滚动）不算返回手势
+    if (!t || e.touches.length > 1) { touchStart = null; return; }
+    // 起点落在左右翻页的卡片里时不认：那是在翻页，不是要返回
+    const inPager = typeof t.target?.closest === 'function' && t.target.closest('.pager');
+    touchStart = inPager ? null : { startX: t.clientX, startY: t.clientY, at: Date.now() };
   }, { passive: true });
+
   root.addEventListener('touchend', (e) => {
     const start = touchStart;
     touchStart = null;
     const t = e.changedTouches?.[0];
     if (!start || !t || !inApp) return;
+    if (Date.now() - systemBackAt < SYSTEM_BACK_QUIET_MS) return; // 系统刚退过，别再退一次
+    // 划太久多半是在慢慢滚页面，不是返回手势
+    if (Date.now() - start.at > 600) return;
     if (isBackSwipe({ ...start, endX: t.clientX, endY: t.clientY })) goBack();
   }, { passive: true });
 
@@ -299,17 +314,21 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     container.append(hint);
   }
 
-  // 桌面键：右下角常驻，一下回到首页。首页本身不画。
-  // PWA 全屏后没有浏览器地址栏，深到第四层时「回首页」原本要连点好几次返回。
+  // 桌面键：挂在顶部返回键的右边，跟着页面一起滚，不悬浮。
+  // 原本是右下角的悬浮球，挡内容也不好够——手在屏幕上半部时要伸下去点。
+  // 放在返回键旁边，「退一级」和「回首页」两个动作就在同一个位置上。
+  // 首页本身不画（已经在首页了）。
   function renderHomeKey(container) {
     if (view === 'home') return;
+    const bar = container.querySelector('.crumb, .card-head');
+    if (!bar) return; // 视图没有顶栏（比如加载失败页），不硬塞
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'home-key';
     btn.setAttribute('aria-label', '回到首页');
-    btn.innerHTML = '<span class="home-key-glyph">⌂</span>';
+    btn.innerHTML = '<span class="home-key-glyph">⌂</span><span class="home-key-text">首页</span>';
     btn.addEventListener('click', goHome);
-    container.append(btn);
+    bar.append(btn);
   }
 
   function mount(fn) {
@@ -320,7 +339,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     renderVoiceHint(root);
     root.append(main);
     fn(main);
-    renderHomeKey(root);
+    renderHomeKey(main);
   }
 
   function render() {
