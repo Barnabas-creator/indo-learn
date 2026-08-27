@@ -3,7 +3,7 @@ import {
   renderLevels, renderPackGrid, renderPack, renderCongrats,
 } from './lib/views/packs.js';
 import { renderDialogList, renderDialog } from './lib/views/dialogs.js';
-import { renderGrammarList, renderGrammarModule } from './lib/views/grammar.js';
+import { renderGrammarList, renderGrammarLessons, renderGrammarLesson } from './lib/views/grammar.js';
 import { renderCourseUnits, renderCourseLessons, renderCourseLesson } from './lib/views/course.js';
 import { renderUnlock } from './lib/views/unlock.js';
 import {
@@ -13,7 +13,7 @@ import {
 import { AUTH_MODE, ADMIN_CONTACT } from './lib/config.js';
 import { normalizeEmail, trialDaysLeft } from './lib/remote-provider.js';
 import { LEVELS, PACKS } from './lib/catalog.js';
-import { parentView, isBackSwipe } from './lib/nav.js';
+import { parentView } from './lib/nav.js';
 
 export function start(root, provider, tts, { history: hist = globalThis.history, win = globalThis } = {}) {
   // 导航状态。view 决定当前层，其余字段是该层参数。全程不落盘。
@@ -64,42 +64,21 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
   const goBack = () => { const parent = parentView(view); if (parent) goUp(parent); };
   const goHome = () => goUp('home');
 
-  // 系统刚刚处理过一次返回的时间戳。手势导航的安卓机上，左边缘右滑会被系统
-  // 吃掉并触发 popstate——但浏览器仍会把这串 touch 事件发给页面，于是下面的
-  // isBackSwipe 又认一次，一个手势退了两级（这就是「有时候直接跳回菜单」）。
-  // popstate 之后压一小段静默期，系统已经退过了就不再自己退。
-  let systemBackAt = 0;
-  const SYSTEM_BACK_QUIET_MS = 700;
-
+  // 返回手势完全交给 history/popstate，页面不再自己认「左边缘右滑」。
+  //
+  // 之前两条路并存：系统手势触发 popstate 退一级，页面上的 isBackSwipe 又认一次
+  // 再退一级。iPhone 上尤其明显——两次 popstate 的先后顺序还不固定，表现成
+  // 「先退到上一层，停一会儿又自己跳回首页」。
+  //
+  // 页面那条路本来只为「系统不吃这个手势」的场合兜底，但那种场合并不存在：
+  // 安卓三键导航有返回键、浏览器标签页有返回按钮、每个界面顶栏还有「← 返回」。
+  // 删掉它，一个手势就只退一级。
   win?.addEventListener?.('popstate', (e) => {
     if (!inApp) return; // 停在登录/激活页时不接管，让浏览器按自己的来
-    systemBackAt = Date.now();
     view = e?.state?.view ?? 'home';
     tts.stop();
     render();
   });
-
-  // 三键导航和普通浏览器标签页里系统不吃这个手势，这里自己认一次。
-  let touchStart = null;
-  root.addEventListener('touchstart', (e) => {
-    const t = e.touches?.[0];
-    // 多指（缩放、双指滚动）不算返回手势
-    if (!t || e.touches.length > 1) { touchStart = null; return; }
-    // 起点落在左右翻页的卡片里时不认：那是在翻页，不是要返回
-    const inPager = typeof t.target?.closest === 'function' && t.target.closest('.pager');
-    touchStart = inPager ? null : { startX: t.clientX, startY: t.clientY, at: Date.now() };
-  }, { passive: true });
-
-  root.addEventListener('touchend', (e) => {
-    const start = touchStart;
-    touchStart = null;
-    const t = e.changedTouches?.[0];
-    if (!start || !t || !inApp) return;
-    if (Date.now() - systemBackAt < SYSTEM_BACK_QUIET_MS) return; // 系统刚退过，别再退一次
-    // 划太久多半是在慢慢滚页面，不是返回手势
-    if (Date.now() - start.at > 600) return;
-    if (isBackSwipe({ ...start, endX: t.clientX, endY: t.clientY })) goBack();
-  }, { passive: true });
 
   function showUnlock(error = '', busy = false) {
     inApp = false;
@@ -248,7 +227,13 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
 
   // 骨架来自 catalog（明文，含尚未开放的包），词条来自加密包
   function packsOfLevel(id) {
-    return PACKS[id].map((p) => ({ ...p, words: wordsByPack[p.id] ?? [] }));
+    // no 是包在这一级里的序号（含准备中的包），跟网格上显示的编号一致，
+    // 好让「背到第几包」在网格和词卡页上是同一个数。
+    return PACKS[id].map((p, i) => ({
+      ...p,
+      no: String(i + 1).padStart(2, '0'),
+      words: wordsByPack[p.id] ?? [],
+    }));
   }
 
   // 已开放 = 有词条。「下一包」只在已开放的包之间走，跳过准备中的。
@@ -489,12 +474,24 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     if (view === 'grammarModule') {
       return guard(provider.getGrammar(), (grammar) =>
         mount((m) =>
-          renderGrammarModule(m, grammar.find((g) => g.id === detailId), {
-            tts,
+          renderGrammarLessons(m, grammar.find((g) => g.id === detailId), {
             back: goBack,
+            open: (id) => { lessonId = id; goTo('grammarLesson'); },
           }),
         ),
       );
+    }
+
+    if (view === 'grammarLesson') {
+      return guard(provider.getGrammar(), (grammar) => {
+        const mod = grammar.find((g) => g.id === detailId);
+        return mount((m) =>
+          renderGrammarLesson(m, mod, mod.lessons.find((l) => l.id === lessonId), {
+            tts,
+            back: goBack,
+          }),
+        );
+      });
     }
   }
 
