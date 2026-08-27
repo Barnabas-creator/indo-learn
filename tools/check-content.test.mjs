@@ -273,6 +273,11 @@ test('课的 unit 字段与所在单元对不上会被报出来', () => {
 });
 
 // 四块缺一块，课文页就渲染出一个空白框。
+// 空单元是合法的「准备中」，不是错误。
+test('没有课的单元不报错（准备中）', () => {
+  assert.deepEqual(validateCourse([cUnit({ lessons: [] })]), []);
+});
+
 test('生词/情景/要点/小测缺任一块都报错', () => {
   assert.match(validateCourse([cUnit({ lessons: [cLesson({ words: [] })] })])[0], /没有生词/);
   assert.match(validateCourse([cUnit({ lessons: [cLesson({ points: [] })] })])[0], /没有要点/);

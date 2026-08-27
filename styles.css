@@ -429,6 +429,17 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 
 /* 语法 */
 /* 课程学习：单元列表 → 课列表 → 课文页 */
+/* 课程按 CEFR 分级分组，未填内容的单元显示「准备中」 */
+.level-head { display: flex; align-items: center; gap: 10px; margin: 20px 4px 10px; }
+.level-head:first-of-type { margin-top: 6px; }
+.level-tag {
+  font-family: var(--serif); font-size: 15px; font-weight: 700; color: #fff;
+  background: var(--moss); padding: 3px 12px; border-radius: 999px;
+}
+@media (prefers-color-scheme: dark) { .level-tag { color: #10130f; } }
+.level-meta { font-size: 12.5px; color: var(--mute); }
+.unit-item.soon { opacity: .55; }
+
 .unit-list, .lesson-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
 
 .unit-item, .lesson-item {

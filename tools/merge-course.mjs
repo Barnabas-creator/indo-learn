@@ -29,13 +29,13 @@ export function mergeCourse(units, files) {
     console.error(`警告：这些课的 unit 对不上任何单元，已跳过：${orphans.join('、')}`);
   }
 
-  // 课在单元内按 order 排；空单元不输出——还没写的单元不该在 UI 上占一行「0 课」
-  return units
-    .map((u) => ({
-      ...u,
-      lessons: byUnit.get(u.id).sort((a, b) => String(a.order).localeCompare(String(b.order))),
-    }))
-    .filter((u) => u.lessons.length);
+  // 课在单元内按 order 排。空单元照样输出——UI 上显示成「准备中」，
+  // 跟单词包里没填词的包是同一套约定：先让人看见整套课程有多少单元，
+  // 再一个一个填。（写错 unit 的课不会变成空单元，上面已经单独警告过。）
+  return units.map((u) => ({
+    ...u,
+    lessons: byUnit.get(u.id).sort((a, b) => String(a.order).localeCompare(String(b.order))),
+  }));
 }
 
 const isMain = process.argv[1] === fileURLToPath(import.meta.url);
@@ -56,6 +56,10 @@ if (isMain) {
   writeFileSync(join(root, 'content-src/course.json'), JSON.stringify(course, null, 2));
 
   const lessons = course.reduce((n, u) => n + u.lessons.length, 0);
-  console.log(`合并 ${course.length} / ${units.length} 单元 / ${lessons} 课 -> content-src/course.json`);
-  for (const u of course) console.log(`  ${u.number} ${u.title} ${u.titleZh}：${u.lessons.length} 课`);
+  const ready = course.filter((u) => u.lessons.length).length;
+  console.log(`合并 ${course.length} 单元（已填 ${ready}）/ ${lessons} 课 -> content-src/course.json`);
+  for (const u of course) {
+    const n = u.lessons.length;
+    console.log(`  ${u.level ?? '--'} ${u.number} ${u.title} ${u.titleZh}：${n ? n + ' 课' : '准备中'}`);
+  }
 }

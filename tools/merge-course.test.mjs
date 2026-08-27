@@ -23,10 +23,11 @@ test('单元内按 order 排，不看文件里的顺序', () => {
   assert.deepEqual(out[0].lessons.map((l) => l.id), ['a', 'b', 'c']);
 });
 
-// 还没写的单元不该在 UI 上占一行「0 课」。
-test('没有课的单元不输出', () => {
+// 还没写的单元照样输出，UI 上显示成「准备中」——先让人看见整套课程有多少单元。
+test('没有课的单元也输出，lessons 为空', () => {
   const out = mergeCourse(UNITS, [['a.json', [lesson('x', 'u01', '01')]]]);
-  assert.deepEqual(out.map((u) => u.id), ['u01']);
+  assert.deepEqual(out.map((u) => u.id), ['u01', 'u02']);
+  assert.equal(out[1].lessons.length, 0);
 });
 
 test('unit 对不上任何单元的课被跳过，不会混进别的单元', () => {
@@ -34,5 +35,5 @@ test('unit 对不上任何单元的课被跳过，不会混进别的单元', () 
     ['a.json', [lesson('ok', 'u01', '01'), lesson('bad', 'u99', '01'), lesson('none', undefined, '01')]],
   ]);
   assert.deepEqual(out[0].lessons.map((l) => l.id), ['ok']);
-  assert.equal(out.length, 1);
+  assert.equal(out[1].lessons.length, 0, '写错 unit 的课不该掉进别的单元');
 });

@@ -243,7 +243,8 @@ export function validateCourse(units) {
     for (const f of ['id', 'number', 'title', 'titleZh', 'goal']) {
       if (!u?.[f]) problems.push(`单元 ${u?.id ?? '?'} 缺字段 ${f}`);
     }
-    if (!(u?.lessons ?? []).length) problems.push(`单元 ${u?.id} 没有课`);
+    // 空单元是合法的「准备中」，UI 上会显示出来但点不进去——先让人看见
+    // 整套课程有多少单元，再一个一个填。
 
     for (const l of u?.lessons ?? []) {
       const at = `单元 ${u?.id} 的课 ${l?.id ?? '?'}`;
