@@ -421,6 +421,83 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .key-phrases span, .dialog-vocab span { color: var(--mute); font-size: 13px; }
 
 /* 语法 */
+/* 课程学习：单元列表 → 课列表 → 课文页 */
+.unit-list, .lesson-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+
+.unit-item, .lesson-item {
+  width: 100%; display: flex; align-items: flex-start; gap: 14px; text-align: left;
+  padding: 16px; border-radius: 18px; background: var(--card);
+  border: 1px solid var(--line); box-shadow: var(--shadow);
+}
+.unit-item:active, .lesson-item:active { transform: scale(.99); }
+
+.unit-number, .lesson-order {
+  flex: none; font-family: var(--serif); font-size: 20px; font-weight: 700;
+  color: var(--moss); line-height: 1.2; min-width: 26px;
+}
+.unit-body, .lesson-body { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.unit-title, .lesson-name { font-size: 16px; font-weight: 650; color: var(--ink); }
+.unit-title-id { font-family: var(--serif); font-size: 13px; color: var(--clove); }
+.unit-goal, .lesson-task { font-size: 12.5px; line-height: 1.55; color: var(--mute); }
+.unit-count, .lesson-meta { flex: none; font-size: 12px; color: var(--clove); padding-top: 3px; }
+
+.unit-goal-full { font-size: 13.5px; line-height: 1.7; color: var(--ink-2); padding: 0 4px 4px; }
+.lesson-task-full { font-size: 13.5px; color: var(--mute); padding: 0 18px 12px; }
+
+.course-view { padding-bottom: 40px; }
+.course-head-title { flex: 1; min-width: 0; }
+.course-block {
+  margin: 0 12px 14px; padding: 16px; border-radius: 18px;
+  background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow);
+}
+.block-title {
+  font-family: var(--serif); font-size: 16px; margin: 0 0 12px;
+  color: var(--ink); padding-bottom: 8px; border-bottom: 1px solid var(--line);
+}
+
+.word-chips { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; }
+.word-chip {
+  display: flex; flex-direction: column; gap: 1px; cursor: pointer;
+  padding: 7px 12px; border-radius: 12px; background: var(--moss-soft);
+}
+.word-chip:active { transform: scale(.96); }
+.chip-id { font-family: var(--serif); font-size: 14px; color: var(--moss); font-weight: 600; }
+.chip-zh { font-size: 11.5px; color: var(--ink-2); }
+
+.scene-lines { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+.scene-line { display: flex; gap: 10px; align-items: flex-start; }
+.line-speaker {
+  flex: none; font-size: 11px; color: var(--clove); background: var(--clove-soft);
+  padding: 3px 8px; border-radius: 999px; margin-top: 2px; max-width: 92px;
+}
+.line-body { flex: 1; min-width: 0; }
+.line-id {
+  display: block; width: 100%; text-align: left; font-family: var(--serif);
+  font-size: 15.5px; line-height: 1.5; color: var(--ink);
+}
+.line-id:active { color: var(--moss); }
+.line-zh { font-size: 12.5px; color: var(--mute); margin-top: 2px; }
+
+.point { padding: 10px 0; border-top: 1px solid var(--line); }
+.point:first-of-type { border-top: none; padding-top: 0; }
+.point-title { font-size: 14px; font-weight: 650; color: var(--moss); margin-bottom: 4px; }
+.point-body { font-size: 13px; line-height: 1.75; color: var(--ink-2); }
+
+.quiz { padding: 12px 0; border-top: 1px solid var(--line); }
+.quiz:first-of-type { border-top: none; padding-top: 0; }
+.quiz-prompt { font-size: 14px; font-weight: 600; color: var(--ink); }
+.quiz-context { font-size: 12px; color: var(--mute); margin-top: 3px; }
+.quiz-choices { list-style: none; display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.choice {
+  width: 100%; text-align: left; padding: 11px 14px; border-radius: 13px;
+  font-size: 14px; background: var(--card-2); border: 1px solid var(--line); color: var(--ink);
+}
+.choice.picked.right { background: var(--moss-soft); border-color: var(--moss); color: var(--moss); font-weight: 600; }
+.choice.picked.wrong { background: var(--clove-soft); border-color: var(--clove); color: var(--clove); }
+.quiz-why { font-size: 12.5px; line-height: 1.6; margin-top: 8px; min-height: 0; }
+.quiz-why.right { color: var(--moss); }
+.quiz-why.wrong { color: var(--clove); }
+
 /* 每一篇配一张手写的概念图：语法讲的是抽象的东西，没有实物可画 */
 .grammar-mark { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 46px; }
 .grammar-visual { width: 42px; height: 42px; display: block; }

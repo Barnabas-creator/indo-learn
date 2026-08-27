@@ -11,6 +11,9 @@ test('每一层都能退回上一层', () => {
   assert.equal(parentView('dialogList'), 'home');
   assert.equal(parentView('grammarModule'), 'grammarList');
   assert.equal(parentView('grammarList'), 'home');
+  assert.equal(parentView('courseUnits'), 'home');
+  assert.equal(parentView('courseLessons'), 'courseUnits');
+  assert.equal(parentView('courseLesson'), 'courseLessons');
 });
 
 test('首页没有上一层（返回不退出应用）', () => {

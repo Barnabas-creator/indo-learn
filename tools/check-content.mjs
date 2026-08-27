@@ -230,6 +230,73 @@ export function validateGrammar(modules) {
   return problems;
 }
 
+// 课程（BIPA A1 转写产物）。四块内容缺一块，课文页就会渲染出一个空的白框，
+// 用户看不出是内容没写还是 bug——所以四块都强制要有。
+export function validateCourse(units) {
+  const problems = [];
+  const seenUnits = new Set();
+  const seenLessons = new Map();
+
+  for (const u of units ?? []) {
+    if (seenUnits.has(u?.id)) problems.push(`单元 ${u.id} 重复出现`);
+    seenUnits.add(u?.id);
+    for (const f of ['id', 'number', 'title', 'titleZh', 'goal']) {
+      if (!u?.[f]) problems.push(`单元 ${u?.id ?? '?'} 缺字段 ${f}`);
+    }
+    if (!(u?.lessons ?? []).length) problems.push(`单元 ${u?.id} 没有课`);
+
+    for (const l of u?.lessons ?? []) {
+      const at = `单元 ${u?.id} 的课 ${l?.id ?? '?'}`;
+      for (const f of ['id', 'order', 'title', 'task']) {
+        if (!l?.[f]) problems.push(`${at} 缺字段 ${f}`);
+      }
+      if (l?.unit !== u?.id) problems.push(`${at} 的 unit 字段是 ${l?.unit}，与所在单元对不上`);
+
+      const first = seenLessons.get(l?.id);
+      if (first) problems.push(`课 ${l.id} 在 ${first} 与 ${u?.id} 重复`);
+      else if (l?.id) seenLessons.set(l.id, u?.id);
+
+      if (!(l?.words ?? []).length) problems.push(`${at} 没有生词`);
+      for (const w of l?.words ?? []) {
+        if (!w?.text || !w?.meaning) problems.push(`${at} 的生词缺 text 或 meaning`);
+      }
+
+      const lines = l?.scene?.lines ?? [];
+      if (!l?.scene?.title) problems.push(`${at} 的情景缺标题`);
+      if (!lines.length) problems.push(`${at} 的情景没有台词`);
+      for (const [i, ln] of lines.entries()) {
+        for (const f of ['speaker', 'text', 'meaning']) {
+          if (!ln?.[f]) problems.push(`${at} 第 ${i + 1} 句缺 ${f}`);
+        }
+        // 台词必须是印尼语。整句没有一个拉丁字母，多半把中文译文填错栏了。
+        if (ln?.text && !/[a-zA-Z]/.test(ln.text)) {
+          problems.push(`${at} 第 ${i + 1} 句没有印尼语：${ln.text}`);
+        }
+      }
+
+      if (!(l?.points ?? []).length) problems.push(`${at} 没有要点`);
+      for (const p of l?.points ?? []) {
+        if (!p?.title || !p?.body) problems.push(`${at} 的要点缺 title 或 body`);
+      }
+
+      if (!(l?.quiz ?? []).length) problems.push(`${at} 没有小测`);
+      for (const q of l?.quiz ?? []) {
+        if (!q?.prompt) problems.push(`${at} 的小测缺题干`);
+        const choices = q?.choices ?? [];
+        if (choices.length < 2) problems.push(`${at} 的小测「${q?.prompt}」选项少于 2 个`);
+        for (const c of choices) {
+          if (!c?.text || !c?.why) problems.push(`${at} 的选项缺 text 或 why`);
+        }
+        const right = choices.filter((c) => c?.ok).length;
+        if (right !== 1) {
+          problems.push(`${at} 的小测「${q?.prompt}」有 ${right} 个正确答案，应为 1 个`);
+        }
+      }
+    }
+  }
+  return problems;
+}
+
 const isMain = process.argv[1] === fileURLToPath(import.meta.url);
 if (isMain) {
   const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -245,6 +312,7 @@ if (isMain) {
   const words = readOrEmpty('words.json', {});
   const dialogs = readOrEmpty('dialogs.json', []);
   const grammar = readOrEmpty('grammar.json', []);
+  const course = readOrEmpty('course.json', []);
 
   // 只校验已填词的包 —— 没填词的是「准备中」，不是错误
   const packs = skeleton
@@ -259,6 +327,7 @@ if (isMain) {
     ...validateNoCrossLevelDupes(packs),
     ...validateDialogs(dialogs),
     ...validateGrammar(grammar),
+    ...validateCourse(course),
   ];
   const warnings = checkExampleVocabulary(
     packs.filter((p) => p.level !== 'beginner'),

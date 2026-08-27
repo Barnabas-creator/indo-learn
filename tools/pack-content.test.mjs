@@ -1,12 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildBundle, PBKDF2_ITERATIONS } from './pack-content.mjs';
+import { CONTENT_MODULES } from '../lib/content-modules.js';
 import { deriveKek, unwrapCek, decryptJson } from '../lib/crypto.js';
 
 const CONTENT = {
   packs: [{ id: 'p1', title: '数字', subtitle: '1到10', theme: 'blue', words: [] }],
   dialogs: [{ id: 'd1', scene: 'Sapaan', sceneZh: '打招呼', lines: [] }],
   grammar: [{ id: 'g1', title: '词根与词缀', lessons: [] }],
+  course: [{ id: 'u01', number: '01', title: 'Menyapa', lessons: [] }],
 };
 
 test('产出 manifest 指向给定版本', async () => {
@@ -20,11 +22,15 @@ test('keys.json 带 salt 与固定迭代次数', async () => {
   assert.ok(b.keys.kdf.salt.length > 0);
 });
 
-test('三个内容文件都被加密', async () => {
+// 加一个内容模块只该改 lib/content-modules.js 一处，这里跟着那份清单断言，
+// 免得以后加模块时还要回来手改一遍常量。
+test('清单里的每个内容模块都被加密成一个 .enc', async () => {
   const b = await buildBundle(CONTENT, '密码A', 'v1');
-  assert.deepEqual(Object.keys(b.files).sort(), [
-    'dialogs.enc', 'grammar.enc', 'packs.enc',
-  ]);
+  assert.deepEqual(
+    Object.keys(b.files).sort(),
+    CONTENT_MODULES.map((n) => `${n}.enc`).sort(),
+  );
+  assert.ok(CONTENT_MODULES.includes('course'), '课程模块应在清单里');
 });
 
 test('用正确密码可还原内容', async () => {

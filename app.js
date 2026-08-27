@@ -4,6 +4,7 @@ import {
 } from './lib/views/packs.js';
 import { renderDialogList, renderDialog } from './lib/views/dialogs.js';
 import { renderGrammarList, renderGrammarModule } from './lib/views/grammar.js';
+import { renderCourseUnits, renderCourseLessons, renderCourseLesson } from './lib/views/course.js';
 import { renderUnlock } from './lib/views/unlock.js';
 import {
   renderLogin, renderRegister, renderActivate, renderCodeIssued, renderActivated,
@@ -19,7 +20,8 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
   let view = 'home';
   let level = null; // 'beginner' | 'intermediate' | 'advanced'
   let packId = null; // 当前打开的包 id
-  let detailId = null; // 对话/语法的详情 id
+  let detailId = null; // 对话/语法/课程单元的详情 id
+  let lessonId = null; // 课程里当前打开的课 id
   let wordsByPack = {}; // 解锁后的词条表 { 包id: [词条…] }，只在内存
   let sessionEmail = null; // 当前登录邮箱，用来校验暂存激活码是不是同一个账号的
   // 试用横幅要用：账号状态与试用到期时间。只有 status === 'trial' 且未过期才显示横幅，
@@ -326,7 +328,8 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
       return mount((m) =>
         renderHome(m, {
           open: (id) => {
-            if (id === 'packs') goTo('levels');
+            if (id === 'course') goTo('courseUnits');
+            else if (id === 'packs') goTo('levels');
             else if (id === 'dialogs') goTo('dialogList');
             else goTo('grammarList');
           },
@@ -426,6 +429,40 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
             back: goBack,
             open: (id) => { detailId = id; goTo('grammarModule'); },
           }),
+        ),
+      );
+    }
+
+    if (view === 'courseUnits') {
+      return guard(provider.getCourse(), (units) =>
+        mount((m) =>
+          renderCourseUnits(m, units, {
+            back: goBack,
+            open: (id) => { detailId = id; goTo('courseLessons'); },
+          }),
+        ),
+      );
+    }
+
+    if (view === 'courseLessons') {
+      return guard(provider.getCourse(), (units) =>
+        mount((m) =>
+          renderCourseLessons(m, units.find((u) => u.id === detailId), {
+            back: goBack,
+            open: (id) => { lessonId = id; goTo('courseLesson'); },
+          }),
+        ),
+      );
+    }
+
+    if (view === 'courseLesson') {
+      return guard(provider.getCourse(), (units) =>
+        mount((m) =>
+          renderCourseLesson(
+            m,
+            units.find((u) => u.id === detailId).lessons.find((l) => l.id === lessonId),
+            { tts, back: goBack },
+          ),
         ),
       );
     }

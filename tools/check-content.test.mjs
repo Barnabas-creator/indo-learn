@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validatePacks, validateDialogs, validateGrammar } from './check-content.mjs';
+import { validatePacks, validateDialogs, validateGrammar, validateCourse } from './check-content.mjs';
 
 const good = [
   {
@@ -245,4 +245,54 @@ test('例句里没有印尼语（整条都是中文）会被报出来', () => {
   ]);
   assert.equal(p.length, 1);
   assert.match(p[0], /例句里没有印尼语/);
+});
+
+// --- 课程（BIPA A1 转写产物）---
+
+const cLesson = (over = {}) => ({
+  id: 'u01l1', unit: 'u01', order: '01', title: '问候', task: '打招呼',
+  words: [{ text: 'pagi', meaning: '早晨' }],
+  scene: { title: '早上', lines: [{ speaker: 'Santi', text: 'Selamat pagi.', meaning: '早上好。' }] },
+  points: [{ title: '要点', body: '内容' }],
+  quiz: [{ prompt: '题干', choices: [{ text: 'A', ok: true, why: '对' }, { text: 'B', ok: false, why: '错' }] }],
+  ...over,
+});
+const cUnit = (over = {}) => ({
+  id: 'u01', number: '01', title: 'Menyapa', titleZh: '打招呼', goal: '目标',
+  lessons: [cLesson()], ...over,
+});
+
+test('结构完整的课程单元没有问题', () => {
+  assert.deepEqual(validateCourse([cUnit()]), []);
+});
+
+test('课的 unit 字段与所在单元对不上会被报出来', () => {
+  const p = validateCourse([cUnit({ lessons: [cLesson({ unit: 'u09' })] })]);
+  assert.equal(p.length, 1);
+  assert.match(p[0], /unit 字段是 u09/);
+});
+
+// 四块缺一块，课文页就渲染出一个空白框。
+test('生词/情景/要点/小测缺任一块都报错', () => {
+  assert.match(validateCourse([cUnit({ lessons: [cLesson({ words: [] })] })])[0], /没有生词/);
+  assert.match(validateCourse([cUnit({ lessons: [cLesson({ points: [] })] })])[0], /没有要点/);
+  assert.match(validateCourse([cUnit({ lessons: [cLesson({ quiz: [] })] })])[0], /没有小测/);
+  const noScene = validateCourse([cUnit({ lessons: [cLesson({ scene: { title: '', lines: [] } })] })]);
+  assert.ok(noScene.some((x) => /情景缺标题/.test(x)));
+  assert.ok(noScene.some((x) => /情景没有台词/.test(x)));
+});
+
+// 判对错要有唯一解，两个 ok 或零个 ok 都是内容写错了。
+test('小测必须正好一个正确答案', () => {
+  const two = cLesson({ quiz: [{ prompt: 'q', choices: [{ text: 'A', ok: true, why: 'w' }, { text: 'B', ok: true, why: 'w' }] }] });
+  assert.match(validateCourse([cUnit({ lessons: [two] })])[0], /有 2 个正确答案/);
+  const none = cLesson({ quiz: [{ prompt: 'q', choices: [{ text: 'A', ok: false, why: 'w' }, { text: 'B', ok: false, why: 'w' }] }] });
+  assert.match(validateCourse([cUnit({ lessons: [none] })])[0], /有 0 个正确答案/);
+});
+
+test('台词整句没有印尼语（把中文填错栏）会被报出来', () => {
+  const bad = cLesson({ scene: { title: '早上', lines: [{ speaker: 'A', text: '早上好。', meaning: '早上好。' }] } });
+  const p = validateCourse([cUnit({ lessons: [bad] })]);
+  assert.equal(p.length, 1);
+  assert.match(p[0], /没有印尼语/);
 });

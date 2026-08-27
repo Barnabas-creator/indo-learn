@@ -1,6 +1,6 @@
 # 印尼语学习
 
-纯前端离线 PWA。三个模块：**单词包**、**场景对话**、**语法学习**。
+纯前端离线 PWA。四个模块：**课程学习**、**单词包**、**场景对话**、**语法学习**。
 内容经 AES-GCM 加密，需登录后台激活才能解锁。手机上「添加到主屏幕」后可全屏离线使用。
 
 当前内容规模：
@@ -9,6 +9,7 @@
 |---|---|
 | 单词包 | 初级 102 包 + 中级 100 包 = 2020 词条（词 + 词性 + 中文释义 + 例句 + 例句翻译）；高级 60 包只有主题骨架 |
 | 场景对话 | 25 组 / 364 轮。每组含场景说明、12–16 轮对话、6 条关键句（标可替换部分）、8 个生词、2–3 条本地贴士 |
+| 课程学习 | BIPA A1 共 10 单元 / 30 课，每课含生词、情景对话、要点、小测 |
 | 语法学习 | 4 篇 / 89 课 / 519 条，全部转写自《我的第一本印尼语文法》（发音 / 基础 / 词缀 / 语法） |
 | 配图 | 557 个 OpenMoji SVG，词条专属配图覆盖 1465/2020（73%），其余走主题图（每个主题都有专属图）|
 
@@ -346,6 +347,67 @@ D1 里还是旧版本的密钥，前端会先拿旧密钥去解新密文（失�
 
 `password` 模式（`AUTH_MODE = 'password'`）不涉及 D1，跳过第 2 步即可，只走 1、3、4。
 
+## 课程内容：BIPA Sahabatku Indonesia A1
+
+课程模块转写自印尼教育部（Badan Pengembangan dan Pembinaan Bahasa / PPSDK）的官方免费
+教材 **Sahabatku Indonesia**，CEFR 六级里的 A1 册：
+`D:\01Christ\03YNB学习\03印尼语\BIPA-Sahabatku-Indonesia\Sahabatku-Indonesia-A1.pdf`。
+
+**这本 PDF 有文字层**（跟语法书那本扫描件不同），能直接 `extract_text()`。抽出来会有
+字间空格噪音（`MENY APA`），清洗一下就能用。
+
+> [!tip] 最有价值的是 p144–154 的 Transkrip Simakan
+> 全书十个单元的听力原文都集中在这十一页——干净、完整、成段的真实对话。
+> 课文页的情景对话全部取自这里，不是自己编的。
+
+**A2 那本官方挂错文件**：仓库 id 190 那条标题写 tingkat A2，挂的附件却是
+`BIPA A1 PPSDK.pdf`，新旧域名都一样，直接猜 `BIPA A2 PPSDK.pdf` 是 404。上游数据就是错的。
+已下载到本地的是 A1 / B1 / B2 / C1 / C2 五本。
+
+### 为什么要自己写中文
+
+BIPA 是给「在印尼上课、有老师讲」的人用的**练习册**——满页是填空题和活动指令，
+全印尼文，一个中文字都没有。所以：对话与生词照搬教材，**要点与小测是自己写的**，
+写的时候对着教材前面的能力对照表（PEMETAAN KOMPETENSI，A-1.1 … A-1.10）定每一课的目标。
+
+### 一课四块
+
+`words` 生词 → `scene` 情景对话（可逐句朗读、也可整段连播）→ `points` 要点
+→ `quiz` 小测（选择题，本地判对错，只解释不记分、不落盘）。四块缺一块，
+`validateCourse` 会拦下来——不然课文页会渲染出一个空白框，用户分不清是内容没写还是 bug。
+
+小测强制**正好一个**正确答案：两个 `ok: true` 或零个都会报错。
+
+### 分文件写 + 合并
+
+一个单元一个文件，放 `content-src/course/`（`.gitignore` 里，明文不进仓库）：
+
+```
+00-units.json                十个单元的元信息
+u01-menyapa.json … u10-lagu-populer.json
+```
+
+课靠自己的 `unit` 字段归位（不像语法篇那样靠文件名前缀——课程文件名带印尼语单元名，
+前缀匹配会脆）。合并：
+
+```bash
+node tools/merge-course.mjs    # -> content-src/course.json
+node tools/check-content.mjs   # validateCourse
+```
+
+单元内按 `order` 排；没有课的单元不输出，不会在 UI 上占一行「0 课」。
+
+### 加内容模块要改哪些地方
+
+`lib/content-modules.js` 是加密内容的唯一清单，打包脚本和两个 provider 的取数出口
+都从它读——加一份加密内容只改那一行。**其余五处仍要各自加**，因为每个模块本来就不一样：
+
+1. `content-src/<新>/` ＋ `tools/merge-<新>.mjs`（明文怎么写、怎么合并）
+2. `tools/check-content.mjs` 的 `validate<新>`（这个模块的内容规则）
+3. `lib/views/<新>.js`（视图）
+4. `app.js` 的 `render()` 分支 ＋ `lib/nav.js` 的 `PARENT` 层级
+5. `lib/views/home.js` 的首页卡片 ＋ `sw.js` 的 `SHELL`
+
 ## 语法内容：《我的第一本印尼语文法》
 
 语法模块的内容全部转写自这本书（台湾版，繁体中文，`D:\01Christ\03YNB学习\03印尼语\我的第一本印尼语文法.pdf`）。
@@ -510,6 +572,9 @@ node tools/push-content-key.mjs --password '密码'  # remote 模式：把新密
 | `lib/views/` | 视图：解锁（旧模式）、注册/登录/激活（`auth.js`，新模式）、单词包、对话、语法 |
 | `server/` | Cloudflare Workers + D1 后端：`src/routes.js`（五个接口：`POST /register`、`POST /login`、`POST /activate`、`POST /request-code`、`GET /content-key`）、`src/crypto.js`（密码哈希/令牌）、`src/codes.js`（激活码生成/哈希）、`src/db.js`（SQL 封装）、`schema.sql`（建表）、`wrangler.toml`（部署配置） |
 | `tools/` | 提取、生成、校验、打包脚本（本机运行） |
+| `lib/content-modules.js` | 加密内容的唯一清单，加一份内容只改这里 |
+| `lib/views/course.js` | 课程视图：单元列表 → 课列表 → 课文页（生词/对话/要点/小测） |
+| `tools/merge-course.mjs` | 把 `content-src/course/*.json` 合并成 `course.json`（见「课程内容」） |
 | `tools/merge-grammar-book.mjs` | 把 `content-src/grammar-book/*.json` 合并成 `grammar.json`（见「语法内容」） |
 | `tools/push-content-key.mjs` | 把内容密钥灌进 D1（发布流程第 2 步，见上） |
 | `tools/issue-code.mjs` | 卖码模式下本地批量生成激活码，明文只打印一次 |

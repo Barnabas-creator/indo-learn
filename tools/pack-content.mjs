@@ -9,6 +9,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { CONTENT_MODULES } from '../lib/content-modules.js';
 import {
   generateCek, deriveKek, wrapCek, encryptJson, randomB64,
 } from '../lib/crypto.js';
@@ -22,12 +23,8 @@ export async function buildBundle(content, password, version) {
   const { iv, wrapped } = await wrapCek(cek, kek);
 
   const files = {};
-  for (const [name, value] of [
-    ['packs.enc', content.packs],
-    ['dialogs.enc', content.dialogs],
-    ['grammar.enc', content.grammar],
-  ]) {
-    files[name] = await encryptJson(value, cek);
+  for (const name of CONTENT_MODULES) {
+    files[`${name}.enc`] = await encryptJson(content[name], cek);
   }
 
   return {
@@ -73,6 +70,7 @@ if (isMain) {
       packs: read('words.json'),
       dialogs: read('dialogs.json'),
       grammar: read('grammar.json'),
+      course: read('course.json'),
     },
     password,
     version,
@@ -90,5 +88,5 @@ if (isMain) {
   for (const [name, payload] of Object.entries(bundle.files)) {
     writeFileSync(join(root, 'data', version, name), JSON.stringify(payload));
   }
-  console.log(`打包完成 -> data/${version}/（packs, dialogs, grammar）`);
+  console.log(`打包完成 -> data/${version}/（${CONTENT_MODULES.join(', ')}）`);
 }
