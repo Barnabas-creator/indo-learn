@@ -39,3 +39,25 @@ test('前缀对不上的文件被跳过，不会混进别的篇', () => {
   assert.deepEqual(out[0].lessons.map((l) => l.id), ['a']);
   assert.equal(out.length, 1);
 });
+
+// 课号形如 02C：数字取自文件名（书里的节次），字母是这一节里的第几课。
+// 这样 meN- 那一族 8 课全是 02x，列表上是连着的一串。
+test('课号 = 文件名里的节次 ＋ 节内序号字母', async () => {
+  const { lessonCode } = await import('./merge-grammar-book.mjs');
+  assert.equal(lessonCode('affix-02-men.json', 0), '02A');
+  assert.equal(lessonCode('affix-02-men.json', 7), '02H');
+  assert.equal(lessonCode('affix-16-bare-verbs.json', 0), '16A');
+  assert.equal(lessonCode('phonetic-1-x.json', 1), '01B');
+});
+
+test('文件名里没有节次时退回 00，不产出 undefined', async () => {
+  const { lessonCode } = await import('./merge-grammar-book.mjs');
+  assert.equal(lessonCode('weird.json', 0), '00A');
+});
+
+test('合并后每一课都带上课号', () => {
+  const out = mergeGrammarBook(MODULES, [
+    ['affix-03-x.json', [lesson('a'), lesson('b')]],
+  ]);
+  assert.deepEqual(out[0].lessons.map((l) => l.code), ['03A', '03B']);
+});

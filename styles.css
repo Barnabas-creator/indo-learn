@@ -459,6 +459,26 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .unit-goal, .lesson-task { font-size: 13px; line-height: 1.6; color: var(--mute); }
 .unit-count, .lesson-meta { flex: none; font-size: 12px; color: var(--clove); padding-top: 3px; }
 
+/* 语法课列表：一行一课，只有课号和标题。加了课号之后，同一族的课
+   （meN- 那 8 课全是 02x）在列表上是连着的一串，一眼看得出是一件事的几个面。 */
+.lesson-list.compact { gap: 8px; }
+.lesson-list.compact .lesson-item { align-items: center; gap: 12px; padding: 13px 15px; }
+.lesson-code {
+  flex: none; min-width: 40px;
+  font-family: var(--serif); font-size: 15px; font-weight: 700;
+  color: var(--moss); letter-spacing: .5px;
+}
+.lesson-list.compact .lesson-name { flex: 1; min-width: 0; font-size: 16px; font-weight: 600; color: var(--ink); }
+.lesson-list.compact .lesson-meta { padding-top: 0; }
+
+/* 记法页的补充说明：跟在分枝后面，是另一条独立规则不是最后一项的一部分 */
+.mind-foot {
+  margin: 16px 0 0; padding: 10px 12px; font-size: 13.5px; line-height: 1.75;
+  color: var(--ink-2); background: var(--card-2); border-radius: 10px;
+}
+/* 条目自带 ①②③ 时不套第二层圈，只留一个淡点 */
+.mind-node.plain { border-color: var(--line); color: var(--mute); font-size: 13px; }
+
 .unit-goal-full { font-size: 14px; line-height: 1.7; color: var(--ink-2); padding: 0 4px 4px; }
 
 /* —— 左右翻页容器 —— 一屏一块，字号才放得开 */

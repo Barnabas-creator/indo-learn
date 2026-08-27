@@ -7,6 +7,16 @@ import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
+// 课号形如 02C：数字取自文件名（affix-02-men.json → 02），字母是这一节里的第几课。
+// 数字对应书里的节次，所以 meN- 那一整族（8 课）都是 02x，列表上看是 8 行「02A…02H」
+// 而不是 8 个各不相干的长标题——一眼能看出它们是同一件事的几个面。
+export function lessonCode(fileName, index) {
+  const m = /-(\d+)-/.exec(fileName);
+  const group = m ? m[1].padStart(2, '0') : '00';
+  // 一节超过 26 课的情况不存在（最多 10 课），到不了字母表末尾
+  return `${group}${String.fromCharCode(65 + index)}`;
+}
+
 export function mergeGrammarBook(modules, files) {
   const byPrefix = new Map(modules.map((m) => [m.prefix, []]));
   const seen = new Map();
@@ -18,12 +28,12 @@ export function mergeGrammarBook(modules, files) {
       orphans.push(name);
       continue;
     }
-    for (const l of lessons) {
+    for (const [i, l] of lessons.entries()) {
       if (seen.has(l.id)) {
         console.error(`警告：课 ${l.id} 在 ${seen.get(l.id)} 与 ${name} 中重复`);
       }
       seen.set(l.id, name);
-      byPrefix.get(prefix).push(l);
+      byPrefix.get(prefix).push({ ...l, code: lessonCode(name, i) });
     }
   }
   if (orphans.length) {
