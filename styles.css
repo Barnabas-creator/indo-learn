@@ -131,10 +131,28 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
   color: var(--ink);
 }
 
-.voice-hint-text { flex: 1; min-width: 200px; }
+.voice-hint-text { flex: 1 1 100%; font-weight: 600; }
+
+/* 两种手机分开折叠：国行机没有 Google 套件，照着「去 Google 语音服务下载」
+   那套做只会更懵，所以各给各的路子，默认都收起来不占地方。 */
+.voice-hint-fix { flex: 1 1 100%; }
+
+.voice-hint-fix > summary {
+  cursor: pointer;
+  padding: 5px 0;
+  color: var(--clove);
+  font-weight: 600;
+  list-style: none;
+}
+
+.voice-hint-fix > summary::-webkit-details-marker { display: none; }
+.voice-hint-fix > summary::before { content: '▸ '; }
+.voice-hint-fix[open] > summary::before { content: '▾ '; }
+.voice-hint-fix p { margin: 4px 0 8px; padding-left: 14px; color: var(--ink-2); }
 
 .voice-hint-close {
-  flex-shrink: 0;
+  flex: none;
+  margin-left: auto;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--ink-2);
@@ -600,7 +618,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .unit-goal-full { font-size: 14px; line-height: 1.7; color: var(--ink-2); padding: 0 4px 4px; }
 
 /* —— 左右翻页容器 —— 一屏一块，字号才放得开 */
-.pager { display: flex; flex-direction: column; }
+.pager { display: flex; flex-direction: column; padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
 
 .pager-track {
   display: flex;
@@ -631,10 +649,16 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .pager-icon { font-size: 20px; }
 
 /* 翻页条吸在屏幕底部：内容长的时候不用滚到最底才够得着 */
+/* 固定在屏幕底部，不是 sticky。
+   sticky 的容器块是 .pager，而这一条正是 .pager 的最后一个子元素——容器块的底边
+   跟它自己重合，等于没有可粘的行程：往下滑一段它就跟着内容走了。改成 fixed，
+   同时给 .pager 留出等高的下边距，免得最后一条内容被压在条子底下。 */
 .pager-nav {
-  position: sticky;
+  position: fixed;
+  left: 0;
+  right: 0;
   bottom: 0;
-  z-index: 10;
+  z-index: 20;
   display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 6px;
   padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
   background: var(--paper);
@@ -659,14 +683,20 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .course-head-title, .grammar-head-title { flex: 1; min-width: 0; }
 
 .word-chips { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+/* 印尼语一行，中文另起一行。原本是左右并排，中文被挤成一列一个字，
+   长一点的释义能撑出七八行高。 */
 .word-chip {
-  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: 2px 10px;
+  cursor: pointer;
   padding: 12px 14px; border-radius: 14px; background: var(--moss-soft);
 }
 .word-chip:active { transform: scale(.98); }
-.chip-id { font-family: var(--serif); font-size: 19px; color: var(--moss); font-weight: 650; flex: none; }
-.chip-zh { font-size: 14.5px; color: var(--ink-2); flex: 1; min-width: 0; }
-.chip-play { font-size: 15px; opacity: .55; flex: none; }
+.chip-id { font-family: var(--serif); font-size: 19px; color: var(--moss); font-weight: 650; }
+.chip-zh { grid-column: 1; font-size: 14.5px; color: var(--ink-2); line-height: 1.6; }
+.chip-play { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 15px; opacity: .55; }
 
 .scene-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .scene-where { flex: 1; font-size: 14px; color: var(--mute); }

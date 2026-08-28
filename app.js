@@ -290,10 +290,25 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     if (tts.hasIndonesianVoice?.() !== false) return;
     const hint = document.createElement('div');
     hint.className = 'voice-hint';
+    // 分两种手机说。国行手机（小米、华为、OPPO、vivo、荣耀）多半没有 Google 套件，
+    // 「去 Google 语音服务里下载语音数据」这条路对他们是走不通的，照着做只会更懵。
     hint.innerHTML = `
-      <span class="voice-hint-text">这台手机还没装印尼语语音包，朗读可能没声音。<br>
-        安装：设置 → 通用管理 / 系统 → 文字转语音（TTS）→ Google 语音服务 →
-        安装语音数据 → Bahasa Indonesia</span>
+      <span class="voice-hint-text">这台手机没有印尼语语音，点朗读会没声音。</span>
+      <details class="voice-hint-fix">
+        <summary>手机有 Google 服务（国际版、三星等）</summary>
+        <p>设置 → 通用管理 / 系统 → 文字转语音（TTS）→ 选「Google 语音服务」→
+          安装语音数据 → 下载 <b>Bahasa Indonesia</b>。</p>
+      </details>
+      <details class="voice-hint-fix">
+        <summary>国行手机（小米 / 华为 / OPPO / vivo / 荣耀）</summary>
+        <p>国行系统自带的语音引擎基本只有中英文，没有印尼语，所以默认是不出声的。两条路：</p>
+        <p><b>一、装 Google 的语音引擎。</b>应用商店一般搜不到，需要自己找
+          「Google 文字转语音」（Speech Services by Google）的安装包装上，再到
+          设置 → 辅助功能 / 无障碍 → 文字转语音 → 把引擎切成它 → 下载
+          <b>Bahasa Indonesia</b>。华为部分机型装不上，属正常。</p>
+        <p><b>二、不折腾，直接听真人录音。</b>首页「对话与听力 → 教材听力」是印尼官方
+          教材的真人录音，不用手机语音也能听，发音比机器还准。</p>
+      </details>
       <button type="button" class="voice-hint-close" aria-label="知道了">知道了</button>`;
     hint.querySelector('.voice-hint-close').addEventListener('click', () => {
       voiceHintDismissed = true;
@@ -328,6 +343,9 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     root.append(main);
     fn(main);
     renderHomeKey(main);
+    // 每进一层都回到最上面。不然新页面会继承上一页的滚动位置，
+    // 一进去顶上就缺一块——看起来像是被什么遮住了。
+    win?.scrollTo?.(0, 0);
   }
 
   function render() {
