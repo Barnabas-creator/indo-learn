@@ -266,7 +266,9 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .level-sub { font-size: 14px; color: var(--ink-2); }
 .level-meta { font-size: 12px; color: var(--gold); margin-top: 6px; }
 
-.soon-note {
+/* 词根包列表顶上的说明：跟「准备中」那条同一个外观，多一条行距，
+   因为它比一句话长——里头还带一句「配合语法词缀篇一起看」的用法建议。 */
+.soon-note, .root-note {
   margin: 0 2px 14px;
   padding: 10px 14px;
   font-size: 13px;
@@ -274,6 +276,8 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
   background: var(--card-2);
   border-radius: 12px;
 }
+
+.root-note { line-height: 1.7; }
 
 /* 包网格 */
 .pack-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
