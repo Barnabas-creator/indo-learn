@@ -12,7 +12,7 @@
 // CACHE 名仍然要在外壳文件增删时改（addAll 的清单变了），但即使忘了改，
 // network-first 也不会再把用户钉死在旧版本上。
 
-const CACHE = 'indo-learn-v15';
+const CACHE = 'indo-learn-v16';
 
 const SHELL = [
   './',
@@ -33,6 +33,7 @@ const SHELL = [
   './lib/views/dialogs.js',
   './lib/views/grammar.js',
   './lib/views/course.js',
+  './lib/views/roots.js',
   './lib/views/pager.js',
   './lib/version.js',
   './lib/content-modules.js',

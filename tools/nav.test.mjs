@@ -12,6 +12,9 @@ test('每一层都能退回上一层', () => {
   assert.equal(parentView('courseUnits'), 'home');
   assert.equal(parentView('courseLessons'), 'courseUnits');
   assert.equal(parentView('courseLesson'), 'courseLessons');
+  assert.equal(parentView('rootList'), 'home');
+  assert.equal(parentView('rootCards'), 'rootList');
+  assert.equal(parentView('rootCongrats'), 'rootList');
   assert.equal(parentView('grammarList'), 'home');
   assert.equal(parentView('grammarModule'), 'grammarList');
   assert.equal(parentView('grammarLesson'), 'grammarModule');
@@ -27,6 +30,7 @@ test('任何一层都能沿父链走回首页', () => {
   const views = [
     'levels', 'grid', 'cards', 'congrats', 'dialogList', 'dialogDetail',
     'courseUnits', 'courseLessons', 'courseLesson',
+    'rootList', 'rootCards', 'rootCongrats',
     'grammarList', 'grammarModule', 'grammarLesson',
   ];
   for (const v of views) {

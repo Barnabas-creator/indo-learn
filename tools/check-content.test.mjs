@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validatePacks, validateDialogs, validateGrammar, validateCourse } from './check-content.mjs';
+import { validatePacks, validateDialogs, validateGrammar, validateCourse, validateRoots, exampleUsesWord } from './check-content.mjs';
 
 const good = [
   {
@@ -300,4 +300,50 @@ test('台词整句没有印尼语（把中文填错栏）会被报出来', () =>
   const p = validateCourse([cUnit({ lessons: [bad] })]);
   assert.equal(p.length, 1);
   assert.match(p[0], /没有印尼语/);
+});
+
+// —— 词根包 ——
+const rWord = (over = {}) => ({
+  id: 'root-01-1', word: 'lihat', pos: '动词', zh: '看',
+  example: 'Saya melihat mobil itu.', exampleZh: '我看见那辆车。',
+  derived: 'melihat 看见 · terlihat 看得见',
+  ...over,
+});
+const rPack = (over = {}) => ({
+  id: 'root-01', title: '看与听', subtitle: 's',
+  words: Array.from({ length: 10 }, (_, i) => rWord({ id: `root-01-${i + 1}`, word: `lihat${i}` })),
+  ...over,
+});
+
+test('合格的词根包没有问题', () => {
+  assert.deepEqual(validateRoots([rPack()]), []);
+});
+
+test('词根缺 derived 会被报出来', () => {
+  const words = rPack().words.map((w, i) => (i ? w : { ...w, derived: '' }));
+  assert.match(validateRoots([rPack({ words })])[0], /缺字段 derived/);
+});
+
+// 只列一个派生形式说明这个词根没挑对——长不出东西的词不值得单独背。
+test('派生形式少于两个会被报出来', () => {
+  const words = rPack().words.map((w, i) => (i ? w : { ...w, derived: 'melihat 看见' }));
+  assert.match(validateRoots([rPack({ words })])[0], /至少 2 个/);
+});
+
+// 200 个名额里重复一个就少覆盖一个原型词，这是这个模块最要紧的一条。
+test('两包之间的词根重复会被报出来', () => {
+  const p = validateRoots([rPack(), rPack({ id: 'root-02' })]);
+  assert.ok(p.some((x) => /重复/.test(x)));
+});
+
+test('词根包不是 10 词会被报出来', () => {
+  assert.match(validateRoots([rPack({ words: [rWord()] })])[0], /有 1 词，应为 10 词/);
+});
+
+// bekerja 是 ber- 在 r 前的变体，Salinlah、mulutmu 带语气/人称后缀——
+// 还原不到位就会把「例句用了这个词」误判成没用。
+test('be- 前缀与 -lah/-mu 后缀都能还原回词根', () => {
+  assert.ok(exampleUsesWord('Ayah saya bekerja di Jakarta.', 'kerja'));
+  assert.ok(exampleUsesWord('Salinlah kalimat di bawah ini.', 'salin'));
+  assert.ok(exampleUsesWord('Tutup mulutmu saat batuk.', 'mulut'));
 });

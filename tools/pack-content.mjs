@@ -71,6 +71,7 @@ if (isMain) {
       dialogs: read('dialogs.json'),
       grammar: read('grammar.json'),
       course: read('course.json'),
+      roots: read('roots.json'),
     },
     password,
     version,

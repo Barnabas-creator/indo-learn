@@ -8,8 +8,12 @@ const REQUIRED = ['id', 'word', 'pos', 'zh', 'example', 'exampleZh'];
 // meN- / peN- 前缀会吃掉词根首字母：men+tolong -> menolong，meng+kirim -> mengirim。
 // 还原时把这些字母补回去，否则派生词会被误判成生词。
 const NASAL = { men: 't', meng: 'k', mem: 'p', meny: 's', pen: 't', peng: 'k', pem: 'p', peny: 's' };
-const PREFIXES = ['memper', 'menge', 'meng', 'meny', 'mem', 'men', 'me', 'peng', 'peny', 'pem', 'pen', 'pe', 'ber', 'bel', 'ter', 'di', 'ke', 'se'];
-const SUFFIXES = ['kannya', 'annya', 'nya', 'kan', 'an', 'i'];
+// ber- 在 r 开头的词根前变 be-（ber+kerja 是 bekerja，不是 berkerja），
+// 所以 'be' 也要当前缀试一次。
+const PREFIXES = ['memper', 'menge', 'meng', 'meny', 'mem', 'men', 'me', 'peng', 'peny', 'pem', 'pen', 'pe', 'ber', 'bel', 'be', 'ter', 'di', 'ke', 'se'];
+// -lah/-kah 是语气后缀（Salinlah 抄写吧），-ku/-mu/-nya 是人称后缀（mulutmu 你的嘴）。
+// 这些贴在词尾的成分不还原，例句里的词会被误判成没用到该词条。
+const SUFFIXES = ['kannya', 'annya', 'kanlah', 'nya', 'lah', 'kah', 'kan', 'an', 'ku', 'mu', 'i'];
 
 // 一个词可能的词根，含前缀鼻音还原后的形式。
 export function stemCandidates(token) {
@@ -298,6 +302,50 @@ export function validateCourse(units) {
   return problems;
 }
 
+// 词根包：跟单词包同一套字段，另加 derived（派生词），并且 200 个词根之间不许重复——
+// 重复了就是白占一个名额，这个模块的价值全在「覆盖多少个不同的原型词」。
+export function validateRoots(packs) {
+  const problems = [];
+  const seenPacks = new Set();
+  const seenWords = new Map();
+
+  for (const pack of packs ?? []) {
+    if (seenPacks.has(pack?.id)) problems.push(`词根包 ${pack.id} 重复出现`);
+    seenPacks.add(pack?.id);
+    for (const f of ['id', 'title', 'subtitle']) {
+      if (!pack?.[f]) problems.push(`词根包 ${pack?.id ?? '?'} 缺字段 ${f}`);
+    }
+
+    const words = pack?.words ?? [];
+    if (words.length !== 10) {
+      problems.push(`词根包 ${pack?.id}（${pack?.title}）有 ${words.length} 词，应为 10 词`);
+    }
+
+    for (const w of words) {
+      for (const f of [...REQUIRED, 'derived']) {
+        if (!w?.[f]) problems.push(`词根包 ${pack?.id} 的词 ${w?.word ?? '?'} 缺字段 ${f}`);
+      }
+
+      const key = String(w?.word ?? '').toLowerCase();
+      const first = seenWords.get(key);
+      if (first) problems.push(`词根 ${w.word} 在 ${first} 与 ${pack?.id} 重复`);
+      else if (key) seenWords.set(key, pack?.id);
+
+      if (w?.word && w?.example && !exampleUsesWord(w.example, w.word)) {
+        problems.push(`词根包 ${pack?.id} 的词 ${w.word} 例句未包含该词：${w.example}`);
+      }
+
+      // 派生词那一行是这个模块的重点，至少得给出两个派生形式，
+      // 只写一个说明这个词根没挑对（原型词长不出东西就不值得单独背）。
+      const items = String(w?.derived ?? '').split(/[·•]/).map((x) => x.trim()).filter(Boolean);
+      if (w?.derived && items.length < 2) {
+        problems.push(`词根包 ${pack?.id} 的词 ${w.word} 只列了 ${items.length} 个派生形式，至少 2 个`);
+      }
+    }
+  }
+  return problems;
+}
+
 const isMain = process.argv[1] === fileURLToPath(import.meta.url);
 if (isMain) {
   const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -314,6 +362,7 @@ if (isMain) {
   const dialogs = readOrEmpty('dialogs.json', []);
   const grammar = readOrEmpty('grammar.json', []);
   const course = readOrEmpty('course.json', []);
+  const roots = readOrEmpty('roots.json', []);
 
   // 只校验已填词的包 —— 没填词的是「准备中」，不是错误
   const packs = skeleton
@@ -329,6 +378,7 @@ if (isMain) {
     ...validateDialogs(dialogs),
     ...validateGrammar(grammar),
     ...validateCourse(course),
+    ...validateRoots(roots),
   ];
   const warnings = checkExampleVocabulary(
     packs.filter((p) => p.level !== 'beginner'),
@@ -341,7 +391,8 @@ if (isMain) {
     return acc;
   }, {});
   console.log(
-    `${packs.length} 个包 / ${total} 词 / ${dialogs.length} 组对话（`
+    `${packs.length} 个包 / ${total} 词 / ${dialogs.length} 组对话 / `
+    + `${roots.length} 个词根包（`
     + Object.entries(byLevel).map(([k, v]) => `${k} ${v} 包`).join(' / ') + '）',
   );
 

@@ -3,6 +3,7 @@ import {
   renderLevels, renderPackGrid, renderPack, renderCongrats,
 } from './lib/views/packs.js';
 import { renderDialogList, renderDialog } from './lib/views/dialogs.js';
+import { renderRootList, renderRootPack } from './lib/views/roots.js';
 import { renderGrammarList, renderGrammarLessons, renderGrammarLesson } from './lib/views/grammar.js';
 import { renderCourseUnits, renderCourseLessons, renderCourseLesson } from './lib/views/course.js';
 import { renderUnlock } from './lib/views/unlock.js';
@@ -22,6 +23,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
   let packId = null; // 当前打开的包 id
   let detailId = null; // 对话/语法/课程单元的详情 id
   let lessonId = null; // 课程里当前打开的课 id
+  let rootIndex = null; // 词根包在列表里的位置（词根包按顺序排，用下标定位就够）
   let wordsByPack = {}; // 解锁后的词条表 { 包id: [词条…] }，只在内存
   let sessionEmail = null; // 当前登录邮箱，用来校验暂存激活码是不是同一个账号的
   // 试用横幅要用：账号状态与试用到期时间。只有 status === 'trial' 且未过期才显示横幅，
@@ -335,6 +337,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
             if (id === 'course') goTo('courseUnits');
             else if (id === 'packs') goTo('levels');
             else if (id === 'dialogs') goTo('dialogList');
+            else if (id === 'roots') goTo('rootList');
             else goTo('grammarList');
           },
         }),
@@ -424,6 +427,48 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
           }),
         ),
       );
+    }
+
+    if (view === 'rootList') {
+      return guard(provider.getRoots(), (packs) =>
+        mount((m) =>
+          renderRootList(m, packs, {
+            back: goBack,
+            open: (i) => { rootIndex = i; goTo('rootCards'); },
+          }),
+        ),
+      );
+    }
+
+    if (view === 'rootCards') {
+      return guard(provider.getRoots(), (packs) =>
+        mount((m) =>
+          renderRootPack(m, {
+            pack: packs[rootIndex],
+            tts,
+            back: goBack,
+            onComplete: () => goTo('rootCongrats'),
+          }),
+        ),
+      );
+    }
+
+    if (view === 'rootCongrats') {
+      return guard(provider.getRoots(), (packs) => {
+        // 词根包没有分级，一路顺着背下去，最后一包完了就回列表。
+        const isLast = rootIndex >= packs.length - 1;
+        return mount((m) =>
+          renderCongrats(m, {
+            pack: packs[rootIndex],
+            nextLabel: isLast ? '回到列表' : '下一包',
+            back: () => goUp('rootList'),
+            next: () => {
+              if (isLast) goUp('rootList');
+              else { rootIndex += 1; goTo('rootCards'); }
+            },
+          }),
+        );
+      });
     }
 
     if (view === 'grammarList') {
