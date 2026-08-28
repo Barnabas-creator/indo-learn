@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validatePacks, validateDialogs, validateGrammar, validateCourse, validateRoots, exampleUsesWord } from './check-content.mjs';
+import { validatePacks, validateDialogs, validateGrammar, validateCourse, validateRoots, validateListening, exampleUsesWord } from './check-content.mjs';
 
 const good = [
   {
@@ -346,4 +346,50 @@ test('be- 前缀与 -lah/-mu 后缀都能还原回词根', () => {
   assert.ok(exampleUsesWord('Ayah saya bekerja di Jakarta.', 'kerja'));
   assert.ok(exampleUsesWord('Salinlah kalimat di bawah ini.', 'salin'));
   assert.ok(exampleUsesWord('Tutup mulutmu saat batuk.', 'mulut'));
+});
+
+// —— 教材听力 ——
+const lItem = (over = {}) => ({
+  id: 'bipa-a1-01-1', unit: 'unit-01', unitZh: '第 1 课', code: 'Simakan 1.1',
+  titleZh: '早上问好', audio: 'assets/audio/bipa-a1/simakan-01-1.m4a', seconds: 23,
+  guide: '先只听，别看原文。',
+  lines: [{ speaker: 'Santi', id_text: 'Apa kabar?', zh: '你好吗？' }],
+  quiz: [
+    { prompt: 'q1', choices: [{ text: 'A', ok: true, why: 'w' }, { text: 'B', ok: false, why: 'w' }] },
+    { prompt: 'q2', choices: [{ text: 'A', ok: true, why: 'w' }, { text: 'B', ok: false, why: 'w' }] },
+  ],
+  vocab: Array.from({ length: 6 }, (_, i) => ({ word: `w${i}`, zh: '义' })),
+  phrases: [{ id_text: 'a', zh: '甲' }, { id_text: 'b', zh: '乙' }, { id_text: 'c', zh: '丙' }],
+  tips: ['贴士一', '贴士二'],
+  ...over,
+});
+
+test('合格的听力段没有问题', () => {
+  assert.deepEqual(validateListening([lItem()]), []);
+});
+
+// 教材的一段听力可能只有三行，不能套情境对话「12–16 轮」那条规矩。
+test('只有一行转写也合格', () => {
+  assert.deepEqual(validateListening([lItem({ lines: [{ speaker: 'A', id_text: 'Halo', zh: '你好' }] })]), []);
+});
+
+// 没有题就不是听力练习，是一段能直接读的对话。
+test('题少于两道会被报出来', () => {
+  assert.match(validateListening([lItem({ quiz: [lItem().quiz[0]] })])[0], /题少于 2 道/);
+});
+
+test('缺音频或时长会被报出来', () => {
+  assert.match(validateListening([lItem({ audio: '' })])[0], /缺字段 audio/);
+  assert.match(validateListening([lItem({ seconds: 0 })])[0], /缺时长/);
+});
+
+test('音频路径不在 assets/audio 下会被报出来', () => {
+  assert.match(validateListening([lItem({ audio: 'data/v11/x.m4a' })])[0], /audio 路径不对/);
+});
+
+// 选错的人需要知道自己错在哪，所以每个选项都要写 why。
+test('选项缺 why 会被报出来', () => {
+  const quiz = [{ prompt: 'q', choices: [{ text: 'A', ok: true }, { text: 'B', ok: false, why: 'w' }] },
+    lItem().quiz[1]];
+  assert.match(validateListening([lItem({ quiz })])[0], /缺 text 或 why/);
 });

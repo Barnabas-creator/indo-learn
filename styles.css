@@ -80,6 +80,10 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
   font-weight: 500;
 }
 
+/* 顶栏的「← 返回」不许折行。教材听力的标题比别处长（Simakan 1.1 早上问好：…），
+   一挤就把返回键压成上下两行的「← 返 / 回」。 */
+.card-head .back, .crumb .back { white-space: nowrap; }
+
 .card-head .play-all { margin-left: auto; color: var(--clove); background: var(--clove-soft); }
 /* 顶栏里若已有「全文」按钮把空间推开了，桌面键就不再抢 margin-left:auto */
 .card-head .play-all ~ .home-key { margin-left: 0; }
@@ -278,6 +282,92 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 }
 
 .root-note { line-height: 1.7; }
+
+/* 听力转写的说话人写的是人名（Santi、Harnita），不是情境对话里的 A/B，
+   塞不进那个 24px 的圆圈，改成句子上方的一行小字。 */
+.listen-view .line { flex-direction: column; gap: 6px; position: relative; padding-right: 44px; }
+
+.listen-view .who {
+  width: auto;
+  height: auto;
+  display: inline-block;
+  padding: 2px 9px;
+  background: var(--moss-soft);
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.listen-view .speak-line { position: absolute; top: 10px; right: 10px; }
+
+/* —— 教材听力 —— */
+.listen-list { list-style: none; margin: 0 0 18px; padding: 0; }
+
+.listen-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.listen-code {
+  font-family: var(--serif);
+  font-size: 12px;
+  color: var(--moss);
+  background: var(--moss-soft);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.listen-name { font-size: 15px; font-weight: 600; }
+.listen-meta { font-size: 12px; color: var(--mute); white-space: nowrap; }
+
+.player {
+  padding: 14px;
+  background: var(--card-2);
+  border-radius: 14px;
+  margin-bottom: 12px;
+}
+
+.player .audio { width: 100%; }
+
+.player-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+.player-actions button {
+  flex: 1;
+  padding: 10px;
+  font-size: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+/* 先听后看：这句引导语要显眼，它是这个模块的用法说明。 */
+.listen-guide {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.7;
+  background: var(--moss-soft);
+  border-radius: 12px;
+}
+
+.reveal {
+  width: 100%;
+  padding: 13px;
+  margin: 6px 0 14px;
+  font-size: 15px;
+  background: var(--card);
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+}
 
 /* 包网格 */
 .pack-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }

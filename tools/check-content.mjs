@@ -346,6 +346,63 @@ export function validateRoots(packs) {
   return problems;
 }
 
+// 教材听力：跟自编的情境对话规矩不一样，所以单独一套。教材的一段听力可能只有
+// 三行（Simakan 1.1 就是），不能套「12–16 轮」那条；反过来它必须有音频文件和听力题，
+// 否则就退回成一段可以直接看的对话，练不到听。
+export function validateListening(items) {
+  const problems = [];
+  const seen = new Set();
+
+  for (const it of items ?? []) {
+    if (seen.has(it?.id)) problems.push(`听力 ${it.id} 重复出现`);
+    seen.add(it?.id);
+    for (const f of ['id', 'unit', 'unitZh', 'code', 'titleZh', 'audio', 'guide']) {
+      if (!it?.[f]) problems.push(`听力 ${it?.id ?? '?'} 缺字段 ${f}`);
+    }
+    const at = `听力 ${it?.id ?? '?'}`;
+    if (it?.audio && !/^assets\/audio\/.+\.(m4a|mp3)$/.test(it.audio)) {
+      problems.push(`${at} 的 audio 路径不对：${it.audio}`);
+    }
+    if (!(it?.seconds > 0)) problems.push(`${at} 缺时长 seconds`);
+
+    const lines = it?.lines ?? [];
+    if (!lines.length) problems.push(`${at} 没有转写`);
+    for (const [i, l] of lines.entries()) {
+      for (const f of ['speaker', 'id_text', 'zh']) {
+        if (!l?.[f]) problems.push(`${at} 第 ${i + 1} 行缺 ${f}`);
+      }
+      if (l?.id_text && !/[a-zA-Z]/.test(l.id_text)) {
+        problems.push(`${at} 第 ${i + 1} 行没有印尼语：${l.id_text}`);
+      }
+    }
+
+    // 没有题就不是听力练习，是一段能直接读的对话。
+    const quiz = it?.quiz ?? [];
+    if (quiz.length < 2) problems.push(`${at} 的题少于 2 道`);
+    for (const q of quiz) {
+      if (!q?.prompt) problems.push(`${at} 有道题缺题干`);
+      const choices = q?.choices ?? [];
+      if (choices.length < 2) problems.push(`${at} 的题「${q?.prompt}」选项少于 2 个`);
+      for (const c of choices) {
+        // why 对错都要写：选错的人需要知道自己错在哪，这比对了更要紧。
+        if (!c?.text || !c?.why) problems.push(`${at} 的选项缺 text 或 why`);
+      }
+      const right = choices.filter((c) => c?.ok).length;
+      if (right !== 1) {
+        problems.push(`${at} 的题「${q?.prompt}」有 ${right} 个正确答案，应为 1 个`);
+      }
+    }
+
+    if ((it?.vocab ?? []).length < 6) problems.push(`${at} 生词少于 6 个`);
+    for (const v of it?.vocab ?? []) {
+      if (!v?.word || !v?.zh) problems.push(`${at} 的生词缺 word 或 zh`);
+    }
+    if ((it?.phrases ?? []).length < 3) problems.push(`${at} 表达法少于 3 条`);
+    if ((it?.tips ?? []).length < 2) problems.push(`${at} 贴士少于 2 条`);
+  }
+  return problems;
+}
+
 const isMain = process.argv[1] === fileURLToPath(import.meta.url);
 if (isMain) {
   const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -363,6 +420,7 @@ if (isMain) {
   const grammar = readOrEmpty('grammar.json', []);
   const course = readOrEmpty('course.json', []);
   const roots = readOrEmpty('roots.json', []);
+  const listening = readOrEmpty('listening.json', []);
 
   // 只校验已填词的包 —— 没填词的是「准备中」，不是错误
   const packs = skeleton
@@ -379,6 +437,7 @@ if (isMain) {
     ...validateGrammar(grammar),
     ...validateCourse(course),
     ...validateRoots(roots),
+    ...validateListening(listening),
   ];
   const warnings = checkExampleVocabulary(
     packs.filter((p) => p.level !== 'beginner'),
@@ -392,7 +451,7 @@ if (isMain) {
   }, {});
   console.log(
     `${packs.length} 个包 / ${total} 词 / ${dialogs.length} 组对话 / `
-    + `${roots.length} 个词根包（`
+    + `${roots.length} 个词根包 / ${listening.length} 段听力（`
     + Object.entries(byLevel).map(([k, v]) => `${k} ${v} 包`).join(' / ') + '）',
   );
 

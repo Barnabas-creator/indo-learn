@@ -7,8 +7,11 @@ test('每一层都能退回上一层', () => {
   assert.equal(parentView('grid'), 'levels');
   assert.equal(parentView('cards'), 'grid');
   assert.equal(parentView('congrats'), 'grid');
+  assert.equal(parentView('audioCats'), 'home');
   assert.equal(parentView('dialogDetail'), 'dialogList');
-  assert.equal(parentView('dialogList'), 'home');
+  assert.equal(parentView('dialogList'), 'audioCats');
+  assert.equal(parentView('listenList'), 'audioCats');
+  assert.equal(parentView('listenDetail'), 'listenList');
   assert.equal(parentView('courseUnits'), 'home');
   assert.equal(parentView('courseLessons'), 'courseUnits');
   assert.equal(parentView('courseLesson'), 'courseLessons');
@@ -28,7 +31,8 @@ test('首页没有上一层（返回不退出应用）', () => {
 // 每一层都必须能一路退到 home，不然会有退不出去的死角。
 test('任何一层都能沿父链走回首页', () => {
   const views = [
-    'levels', 'grid', 'cards', 'congrats', 'dialogList', 'dialogDetail',
+    'levels', 'grid', 'cards', 'congrats',
+    'audioCats', 'dialogList', 'dialogDetail', 'listenList', 'listenDetail',
     'courseUnits', 'courseLessons', 'courseLesson',
     'rootList', 'rootCards', 'rootCongrats',
     'grammarList', 'grammarModule', 'grammarLesson',

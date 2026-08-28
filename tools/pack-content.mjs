@@ -72,6 +72,7 @@ if (isMain) {
       grammar: read('grammar.json'),
       course: read('course.json'),
       roots: read('roots.json'),
+      listening: read('listening.json'),
     },
     password,
     version,

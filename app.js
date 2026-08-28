@@ -4,6 +4,7 @@ import {
 } from './lib/views/packs.js';
 import { renderDialogList, renderDialog } from './lib/views/dialogs.js';
 import { renderRootList, renderRootPack } from './lib/views/roots.js';
+import { renderAudioCats, renderListenList, renderListen } from './lib/views/listening.js';
 import { renderGrammarList, renderGrammarLessons, renderGrammarLesson } from './lib/views/grammar.js';
 import { renderCourseUnits, renderCourseLessons, renderCourseLesson } from './lib/views/course.js';
 import { renderUnlock } from './lib/views/unlock.js';
@@ -336,7 +337,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
           open: (id) => {
             if (id === 'course') goTo('courseUnits');
             else if (id === 'packs') goTo('levels');
-            else if (id === 'dialogs') goTo('dialogList');
+            else if (id === 'audio') goTo('audioCats');
             else if (id === 'roots') goTo('rootList');
             else goTo('grammarList');
           },
@@ -404,6 +405,40 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
             else { goUp('levels'); }
           },
         }),
+      );
+    }
+
+    if (view === 'audioCats') {
+      // 两份内容都要数一下条数才画得出卡片上的「25 组 / 3 段」。
+      return guard(
+        Promise.all([provider.getDialogs(), provider.getListening()]),
+        ([dialogs, listening]) =>
+          mount((m) =>
+            renderAudioCats(m, {
+              counts: { dialogs: dialogs.length, listening: listening.length },
+              back: goBack,
+              open: (id) => goTo(id === 'dialogs' ? 'dialogList' : 'listenList'),
+            }),
+          ),
+      );
+    }
+
+    if (view === 'listenList') {
+      return guard(provider.getListening(), (items) =>
+        mount((m) =>
+          renderListenList(m, items, {
+            back: goBack,
+            open: (id) => { detailId = id; goTo('listenDetail'); },
+          }),
+        ),
+      );
+    }
+
+    if (view === 'listenDetail') {
+      return guard(provider.getListening(), (items) =>
+        mount((m) =>
+          renderListen(m, items.find((x) => x.id === detailId), { tts, back: goBack }),
+        ),
       );
     }
 
