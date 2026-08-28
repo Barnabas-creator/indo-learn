@@ -758,6 +758,42 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
   color: var(--mute); background: var(--card); border-left: 3px solid var(--gold); border-radius: 4px;
 }
 
+/* 注释拆开后的三种块。书里那一整段挤在一起的注释，现在是：
+   引文（对话、又例）各占一块，生词一行一个，最后才是零散说明。 */
+.note-quote {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.note-quote:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+
+.note-tag {
+  flex: none;
+  padding: 1px 8px;
+  font-size: 11px;
+  color: var(--clove);
+  background: var(--clove-soft);
+  border-radius: 999px;
+}
+
+.note-quote-text { font-family: var(--serif); font-size: 14px; color: var(--ink); }
+
+.note-vocab { list-style: none; margin: 8px 0 0; padding: 0; }
+
+.note-vocab li {
+  padding: 2px 0 2px 12px;
+  position: relative;
+  font-size: 13px;
+}
+
+.note-vocab li::before { content: '·'; position: absolute; left: 2px; }
+
+.note-text { margin-bottom: 6px; }
+
 @media (prefers-color-scheme: dark) { .option-label { color: #10130f; } }
 
 /* 一课单独占一页时的用法块：例句是主角，字号最大，整块可点朗读 */

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lessonPages, parseTip, visualFor } from '../lib/views/grammar.js';
+import { lessonPages, parseTip, parseNote, visualFor } from '../lib/views/grammar.js';
 
 const opt = (label) => ({
   label, result: 'r', meaning: 'm', example: 'e', translation: 't',
@@ -51,4 +51,26 @@ test('认不出的篇退回默认图，不挂断链', () => {
   assert.match(visualFor({ id: 'syntax' }), /syntax\.svg$/);
   assert.match(visualFor({ id: '不存在' }), /affix\.svg$/);
   assert.match(visualFor(undefined), /affix\.svg$/);
+});
+
+// 书里的注释是一整段挤在一起的：生词、对话的另外半句、又例，全用「·」「｜」串成一行。
+// 更糟的是引来的对话只留了一句当例句，另外半句藏在「对话：」后面混在生词堆里——
+// 于是注释里出现的词在页面上找不到出处。拆开才看得见。
+test('注释按「｜」拆块，带标签的成引文，「·」串的成生词表', () => {
+  const parts = parseNote('lihat 看 · capai 累 ｜ 同型：Kamu kelihatan pucat. 你看起来苍白。');
+  assert.deepEqual(parts.map((p) => p.kind), ['quote', 'vocab']);
+  assert.equal(parts[0].label, '同型');
+  assert.deepEqual(parts[1].items, ['lihat 看', 'capai 累']);
+});
+
+// 生词表沉到底：对话和又例是内容，词表是查阅。
+test('生词表排在引文后面', () => {
+  const parts = parseNote('a 甲 · b 乙 ｜ 回答：Bisa. 会。 ｜ 又例：Halo. 你好。');
+  assert.deepEqual(parts.map((p) => p.kind), ['quote', 'quote', 'vocab']);
+  assert.deepEqual(parts.slice(0, 2).map((p) => p.label), ['回答', '又例']);
+});
+
+test('没有注释时返回空数组', () => {
+  assert.deepEqual(parseNote(''), []);
+  assert.deepEqual(parseNote(undefined), []);
 });
