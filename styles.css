@@ -996,7 +996,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 
 /* 学习路线：一步一格，中间的箭头由 li.guide-arrow 单独占一行画出来。
    用箭头而不是 1234 的列表，是因为要表达的是「往下走」，不是「并列几条」。 */
-.guide-path { list-style: none; margin: 0 0 14px; padding: 0; }
+.guide-path { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 
 .guide-step {
   display: flex;
@@ -1022,13 +1022,23 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .step-body b { font-size: 15px; }
 .step-body span { font-size: 13.5px; color: var(--mute); line-height: 1.7; }
 
-.guide-arrow {
-  text-align: center;
-  font-size: 17px;
-  color: var(--moss);
-  line-height: 1;
-  padding: 5px 0;
+/* 环形图：四个模块转一圈。宽度跟着容器走，最大不超过一屏宽的大半，
+   免得在平板上撑成一张巨图。 */
+.cycle {
+  display: block;
+  width: 100%;
+  max-width: 330px;
+  margin: 4px auto 14px;
 }
+
+/* 选修那一格：虚线框跟实线的四步分开，一眼看得出「用不用都行」。 */
+.guide-step.optional {
+  margin-top: 10px;
+  border-style: dashed;
+  background: transparent;
+}
+
+.step-no.opt { background: var(--gold); color: #16211d; font-size: 12.5px; }
 
 .guide-note {
   margin: 0;
