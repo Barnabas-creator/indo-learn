@@ -543,7 +543,9 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .dialog-id { flex: 1; font-family: var(--serif); font-style: italic; font-size: 13px; color: var(--mute); }
 .dialog-count, .grammar-count { font-size: 12px; color: var(--clove); }
 
-.dialog-view, .grammar-view { padding: 14px; max-width: 720px; margin: 0 auto; }
+/* 听力页不走 pager（pager-page 自带左右留白），所以要自己留边距，
+   否则卡片直接贴着屏幕两侧。 */
+.dialog-view, .grammar-view, .listen-view { padding: 16px; max-width: 720px; margin: 0 auto; }
 
 .lines { list-style: none; margin: 0 0 22px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 
@@ -903,3 +905,167 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
   background: var(--card); border: 1px solid var(--line); border-radius: 12px;
 }
 .dialog-tips li::before { content: '· '; color: var(--clove); }
+
+/* —— 使用手册 —— */
+/* 铺满整屏的一层，不是弹窗：内容有三大段，弹窗那点高度装不下，
+   滚起来也别扭。 */
+.guide {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow-y: auto;
+  background: var(--paper);
+  -webkit-overflow-scrolling: touch;
+}
+
+.guide-sheet { max-width: 620px; margin: 0 auto; padding: 0 18px 40px; }
+
+.guide-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0 12px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+
+.guide-head h1 { flex: 1; margin: 0; font-family: var(--serif); font-size: 22px; }
+
+.guide-close {
+  flex: none;
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  font-size: 16px; color: var(--ink-2);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+
+/* 开场白：作者自己的话，用衬线体和暖底跟后面的说明书部分分开。 */
+.guide-hello {
+  margin: 18px 0 24px;
+  padding: 16px 18px;
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.85;
+  background: var(--clove-soft);
+  border-radius: 16px;
+}
+
+.guide-hello p { margin: 0 0 10px; }
+.guide-hello p:last-child { margin-bottom: 0; }
+
+.guide-block { margin-bottom: 26px; }
+
+.guide-block h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  font-family: var(--serif);
+  font-size: 17.5px;
+}
+
+.guide-num {
+  flex: none;
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  font-size: 14px; color: var(--paper);
+  background: var(--moss);
+  border-radius: 50%;
+}
+
+.guide-block > p { margin: 0 0 10px; font-size: 14.5px; line-height: 1.8; color: var(--ink-2); }
+
+.guide-how {
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.8;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.guide-how p { margin: 0 0 8px; }
+.guide-how p:last-child { margin-bottom: 0; }
+.guide-sub { padding-left: 12px; color: var(--ink-2); }
+.mono { font-family: var(--serif); }
+
+/* 学习路线：一步一格，中间的箭头由 li.guide-arrow 单独占一行画出来。
+   用箭头而不是 1234 的列表，是因为要表达的是「往下走」，不是「并列几条」。 */
+.guide-path { list-style: none; margin: 0 0 14px; padding: 0; }
+
+.guide-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.step-no {
+  flex: none;
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  font-family: var(--serif);
+  font-size: 14px; color: var(--paper);
+  background: var(--clove);
+  border-radius: 50%;
+}
+
+.step-body { display: flex; flex-direction: column; gap: 3px; }
+.step-body b { font-size: 15px; }
+.step-body span { font-size: 13.5px; color: var(--mute); line-height: 1.7; }
+
+.guide-arrow {
+  text-align: center;
+  font-size: 17px;
+  color: var(--moss);
+  line-height: 1;
+  padding: 5px 0;
+}
+
+.guide-note {
+  margin: 0;
+  padding: 11px 13px;
+  font-size: 13.5px;
+  line-height: 1.8;
+  color: var(--ink-2);
+  background: var(--moss-soft);
+  border-radius: 12px;
+}
+
+.guide-foot { margin-top: 28px; text-align: center; }
+
+.guide-start {
+  width: 100%;
+  padding: 15px;
+  font-size: 16px;
+}
+
+.guide-version { margin: 12px 0 0; font-size: 12px; color: var(--mute); }
+
+/* 首页右下角的「?」。只在首页出现——手册讲的是整个 App 怎么用，
+   在深层页面里挂一个入口既挡内容也没必要。 */
+.guide-fab {
+  position: fixed;
+  right: 16px;
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  z-index: 30;
+  width: 46px; height: 46px;
+  display: grid; place-items: center;
+  font-family: var(--serif);
+  font-size: 21px;
+  color: var(--moss);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  box-shadow: var(--shadow);
+}
+
+.guide-fab:active { transform: scale(.94); }

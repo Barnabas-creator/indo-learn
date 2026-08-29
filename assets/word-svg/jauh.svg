@@ -1,0 +1,3 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="远的">
+<circle cx="32" cy="100" r="16" fill="#2f5d4f"/><circle cx="168" cy="100" r="16" fill="#b4552d"/><path d="M32 146h136" stroke="#2f5d4f" stroke-width="6" stroke-linecap="round"/><path d="M32 138v16M168 138v16" stroke="#2f5d4f" stroke-width="6" stroke-linecap="round"/>
+</svg>

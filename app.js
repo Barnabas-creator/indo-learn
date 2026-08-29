@@ -8,6 +8,7 @@ import { renderAudioCats, renderListenList, renderListen } from './lib/views/lis
 import { renderGrammarList, renderGrammarLessons, renderGrammarLesson } from './lib/views/grammar.js';
 import { renderCourseUnits, renderCourseLessons, renderCourseLesson } from './lib/views/course.js';
 import { renderUnlock } from './lib/views/unlock.js';
+import { renderGuide, guideSeen, markGuideSeen } from './lib/views/guide.js';
 import {
   renderLogin, renderRegister, renderActivate, renderCodeIssued, renderActivated,
   AUTH_ERRORS, escapeHtml,
@@ -38,6 +39,9 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
   // 否则安卓上会先闪一条错误的缺音色提示。
   let voicesReady = false;
   let voiceHintDismissed = false;
+  // 手册开着的时候，底下的主界面照旧留在 DOM 里——关掉手册就回到原处，
+  // 不用重画，也不会把用户翻到一半的位置弄丢。
+  let guideOpen = false;
   tts.whenReady?.().then(() => { voicesReady = true; });
 
   // —— 导航：层深由 nav.js 的父子关系算出来，history 记录与层深一一对应 ——
@@ -166,9 +170,12 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
             wordsByPack = await provider.getPacks();
             if (regRes && regRes.code) {
               inApp = false;
-              renderCodeIssued(root, { code: regRes.code, onNext: () => render() });
+              renderCodeIssued(root, { code: regRes.code, onNext: () => { render(); openGuide(); } });
             } else {
+              // 刚注册的人第一次进来，先把手册摊开——装桌面、装语音包、
+              // 按什么顺序学，这三件事不说清楚，多半会以为软件坏了。
               render();
+              openGuide();
             }
           } else {
             // 兜底：万一服务端某天又开始产出非试用的 pending 账号，仍然走原来的激活页。
@@ -334,6 +341,35 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     bar.append(btn);
   }
 
+  // 手册铺在最上面一层，另挂一个容器，不动 root 里已经画好的界面。
+  function openGuide() {
+    if (guideOpen) return;
+    guideOpen = true;
+    const layer = document.createElement('div');
+    layer.className = 'guide-layer';
+    document.body.append(layer);
+    renderGuide(layer, {
+      onClose: () => {
+        layer.remove();
+        guideOpen = false;
+        markGuideSeen(localStorage);
+      },
+    });
+  }
+
+  // 首页右下角的「?」。只在首页画：手册讲的是整个 App 怎么用，
+  // 深层页面里挂个入口既挡内容也没必要。
+  function renderGuideFab(container) {
+    if (view !== 'home') return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'guide-fab';
+    btn.setAttribute('aria-label', '使用手册');
+    btn.textContent = '?';
+    btn.addEventListener('click', openGuide);
+    container.append(btn);
+  }
+
   function mount(fn) {
     const main = document.createElement('div');
     root.innerHTML = '';
@@ -343,9 +379,14 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     root.append(main);
     fn(main);
     renderHomeKey(main);
+    renderGuideFab(root);
     // 每进一层都回到最上面。不然新页面会继承上一页的滚动位置，
     // 一进去顶上就缺一块——看起来像是被什么遮住了。
     win?.scrollTo?.(0, 0);
+    // 没看过手册的人，第一次进到主界面就摊开一次。放在 mount 里是因为进主界面
+    // 有好几条路（注册、登录、输密码解锁、会话还在直接进），挨个去加必漏一条。
+    // 弹过一次就记进 localStorage，之后只有点右下角的「?」才出现。
+    if (!guideSeen(localStorage)) openGuide();
   }
 
   function render() {
