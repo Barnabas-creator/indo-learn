@@ -61,6 +61,23 @@ test('试用过期的账号退回 free 清单，不报错', async () => {
   assert.deepEqual(body.modules.packs.map((u) => u.id), ['p-1']);
 });
 
+test('试用未过期的账号拿到全部单元', async () => {
+  const accounts = [{ id: 1, status: 'trial', trial_ends_at: 2000 }];
+  const env = { DB: memDb({ units: UNITS, accounts }), SESSION_SECRET: SECRET };
+  const token = await signToken(1, SECRET, 1000);
+  const body = await (await handleContentIndex(get(token), env, 1000)).json();
+  assert.deepEqual(body.modules.packs.map((u) => u.id), ['p-1', 'p-2']);
+});
+
+test('停用账号退回 free 清单，不报错', async () => {
+  const accounts = [{ id: 1, status: 'disabled', trial_ends_at: null }];
+  const env = { DB: memDb({ units: UNITS, accounts }), SESSION_SECRET: SECRET };
+  const token = await signToken(1, SECRET, 1000);
+  const res = await handleContentIndex(get(token), env, 1000);
+  assert.equal(res.status, 200);
+  assert.deepEqual((await res.json()).modules.packs.map((u) => u.id), ['p-1']);
+});
+
 test('清单按模块分组，只有 id/tier/title', async () => {
   const env = { DB: memDb({ units: UNITS }), SESSION_SECRET: SECRET };
   const body = await (await handleContentIndex(get(), env, 1000)).json();

@@ -64,7 +64,18 @@ export default {
       }
     }
     const headers = new Headers(res.headers);
-    for (const [k, v] of Object.entries(cors)) headers.set(k, v);
+    for (const [k, v] of Object.entries(cors)) {
+      // vary 不能直接 set 覆盖：handler 自己可能已经声明了 vary（比如
+      // /content/index 因为内容随 authorization 变化而加的 vary: authorization），
+      // 这里的 vary: origin 是 CORS 层另一条必须的声明，两条都要保留，缺一条
+      // 都会让对应的缓存判断失效。
+      if (k === 'vary' && headers.has('vary')) {
+        const existing = headers.get('vary').split(',').map((s) => s.trim()).filter(Boolean);
+        if (!existing.includes(v)) headers.set('vary', [...existing, v].join(', '));
+      } else {
+        headers.set(k, v);
+      }
+    }
     return new Response(res.body, { status: res.status, headers });
   },
 };

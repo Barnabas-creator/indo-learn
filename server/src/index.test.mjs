@@ -100,6 +100,34 @@ test('带查询串的 GET /content-key?x=1 能命中路由（不再是 404）', 
   assert.notEqual(res.status, 404);
 });
 
+// /content/index 的响应内容随 authorization 变（不同 token 拿到不同清单），
+// 而 index.js 的 CORS 层又会给每个响应加 vary: origin——两条 vary 声明不能
+// 互相覆盖，缺一条对应的缓存判断就会失效（见 index.js 合并响应头那段）。
+// 这条测试必须走 worker.fetch() 全链路，只测 handleContentIndex 测不到
+// CORS 层与 handler 头合并这一步。
+test('/content/index 走完整链路：响应的 vary 同时带 origin 和 authorization', async () => {
+  const db = {
+    prepare(sql) {
+      return {
+        bind() { return this; },
+        async first() {
+          if (/FROM content_meta/.test(sql)) return { version: 'c1' };
+          return null;
+        },
+        async all() { return { results: [] }; },
+      };
+    },
+  };
+  const res = await worker.fetch(
+    new Request('https://api.test/content/index', { headers: { origin: 'https://example.com' } }),
+    { ...env, DB: db },
+  );
+  assert.equal(res.status, 200);
+  const vary = (res.headers.get('vary') ?? '').split(',').map((s) => s.trim());
+  assert.ok(vary.includes('origin'), `vary 缺 origin，实际是: ${res.headers.get('vary')}`);
+  assert.ok(vary.includes('authorization'), `vary 缺 authorization，实际是: ${res.headers.get('vary')}`);
+});
+
 test('POST /request-code 能命中路由（不再是 404）', async () => {
   const res = await worker.fetch(
     new Request('https://api.test/request-code', { method: 'POST' }),
