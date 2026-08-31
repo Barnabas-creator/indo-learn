@@ -48,8 +48,13 @@ export async function handleContentIndex(request, env, now = Date.now()) {
 // 值分支提示用户，这里另起一套字符串只会让同一种状况在两个接口报不同的话。
 export async function handleContentUnit(request, env, now = Date.now()) {
   const { pathname } = new URL(request.url);
-  const [, , module, unitId] = pathname.split('/');
-  if (!MODULES.has(module) || !unitId) return json({ error: 'not_found' }, 404);
+  // 过滤空段而不是按固定位置解构：直接解构 split('/') 会对多余的尾部分段
+  // 来者不拒（/content/packs/p-1/extra 里第 4 段被静默丢弃，照样当合法请求
+  // 处理），也没法把 /content/packs/、/content//p-1 这类空段路径统一处理掉。
+  // 段数必须恰好是 3（'content' + module + unitId），多一段少一段都是 404。
+  const segments = pathname.split('/').filter(Boolean);
+  const [, module, unitId] = segments;
+  if (segments.length !== 3 || !MODULES.has(module) || !unitId) return json({ error: 'not_found' }, 404);
 
   const row = await getContentUnit(env.DB, module, unitId);
   if (!row) return json({ error: 'not_found' }, 404);

@@ -193,3 +193,29 @@ test('module 不在六个固定名单里是 404', async () => {
   assert.equal(res.status, 404);
   assert.equal((await res.json()).error, 'not_found');
 });
+
+// 固定位置解构 [, , module, unitId] 对第 4 段来者不拒——第 4 段被静默丢弃，
+// /content/packs/p-1/extra 会被当成合法的 /content/packs/p-1 处理，返回 200。
+// 段数校验（必须恰好 3 段）堵住这个口子。
+test('路径带多余的尾部分段是 404，不会被当成合法单元请求', async () => {
+  const env = { DB: unitDb(ROWS), SESSION_SECRET: SECRET };
+  const res = await handleContentUnit(unitReq('/content/packs/p-1/extra'), env, 1000);
+  assert.equal(res.status, 404);
+  assert.equal((await res.json()).error, 'not_found');
+});
+
+// 段数校验顺带统一了空段路径的处理：以前这两种是靠「解构越界恰好是 undefined」
+// 撞对 404，现在要靠 filter(Boolean) 之后段数不等于 3 来撞对，确认没有跑偏。
+test('module 段缺失（/content/packs/）是 404', async () => {
+  const env = { DB: unitDb(ROWS), SESSION_SECRET: SECRET };
+  const res = await handleContentUnit(unitReq('/content/packs/'), env, 1000);
+  assert.equal(res.status, 404);
+  assert.equal((await res.json()).error, 'not_found');
+});
+
+test('module 段是空段（/content//p-1）是 404', async () => {
+  const env = { DB: unitDb(ROWS), SESSION_SECRET: SECRET };
+  const res = await handleContentUnit(unitReq('/content//p-1'), env, 1000);
+  assert.equal(res.status, 404);
+  assert.equal((await res.json()).error, 'not_found');
+});
