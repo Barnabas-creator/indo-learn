@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { handleContentIndex, handleContentUnit } from './content.js';
+import {
+  handleContentIndex, handleContentUnit, ACCOUNT_DAILY_LIMIT, ANON_DAILY_LIMIT, dayKey,
+} from './content.js';
 import { signToken } from './crypto.js';
 
 const SECRET = 's';
@@ -218,4 +220,168 @@ test('module 段是空段（/content//p-1）是 404', async () => {
   const res = await handleContentUnit(unitReq('/content//p-1'), env, 1000);
   assert.equal(res.status, 404);
   assert.equal((await res.json()).error, 'not_found');
+});
+
+// 限流：内存假 D1，counter 模拟当天已有的计数，可选 log 记录每次写入
+// content_hits / error_log 的实参，用来断言 subject 前缀和超限落库这两件事。
+function countingDb(rows, accounts = [], counter = { n: 0 }, log = { hits: [], errors: [] }) {
+  return {
+    counter,
+    log,
+    prepare(sql) {
+      const stmt = { args: [] };
+      return {
+        bind(...args) { stmt.args = args; return this; },
+        async first() {
+          if (/INSERT INTO content_hits/.test(sql)) {
+            counter.n += 1;
+            log.hits.push(stmt.args);
+            return { n: counter.n };
+          }
+          if (/FROM content WHERE module/.test(sql)) {
+            return rows.find((r) => r.module === stmt.args[0] && r.unit_id === stmt.args[1]) ?? null;
+          }
+          if (/FROM accounts WHERE id/.test(sql)) {
+            return accounts.find((a) => a.id === stmt.args[0]) ?? null;
+          }
+          return null;
+        },
+        async run() {
+          if (/INSERT INTO error_log/.test(sql)) log.errors.push(stmt.args);
+          return { meta: {} };
+        },
+        async all() { return { results: [] }; },
+      };
+    },
+  };
+}
+
+test('日期键按 UTC 取到天', () => {
+  assert.equal(dayKey(Date.UTC(2026, 7, 31, 23, 59)), '2026-08-31');
+});
+
+test('匿名超过上限返回 429', async () => {
+  const counter = { n: ANON_DAILY_LIMIT }; // 下一次就是第 61 次
+  const env = { DB: countingDb(ROWS, [], counter), SESSION_SECRET: SECRET };
+  const res = await handleContentUnit(unitReq('/content/packs/p-1'), env, 1000);
+  assert.equal(res.status, 429);
+  assert.equal((await res.json()).error, 'rate_limited');
+});
+
+test('匿名第 60 次仍然放行', async () => {
+  const counter = { n: ANON_DAILY_LIMIT - 2 };
+  const env = { DB: countingDb(ROWS, [], counter), SESSION_SECRET: SECRET };
+  const res = await handleContentUnit(unitReq('/content/packs/p-1'), env, 1000);
+  assert.equal(res.status, 200);
+});
+
+// 上限边界要卡到「恰好」，不能只在附近估算：下一次正好是第 60 次时必须放行，
+// 再下一次（第 61 次）才该被拦。
+test('恰好命中上限（第 60 次）放行', async () => {
+  const counter = { n: ANON_DAILY_LIMIT - 1 };
+  const env = { DB: countingDb(ROWS, [], counter), SESSION_SECRET: SECRET };
+  const res = await handleContentUnit(unitReq('/content/packs/p-1'), env, 1000);
+  assert.equal(res.status, 200);
+  assert.equal(counter.n, ANON_DAILY_LIMIT);
+});
+
+test('超出上限恰好一次（第 61 次）就是 429', async () => {
+  const counter = { n: ANON_DAILY_LIMIT };
+  const env = { DB: countingDb(ROWS, [], counter), SESSION_SECRET: SECRET };
+  const res = await handleContentUnit(unitReq('/content/packs/p-1'), env, 1000);
+  assert.equal(res.status, 429);
+  assert.equal(counter.n, ANON_DAILY_LIMIT + 1);
+});
+
+test('账号上限比匿名宽', async () => {
+  assert.ok(ACCOUNT_DAILY_LIMIT > ANON_DAILY_LIMIT);
+  const accounts = [{ id: 1, status: 'active', trial_ends_at: null }];
+  const counter = { n: ANON_DAILY_LIMIT + 10 };
+  const env = { DB: countingDb(ROWS, accounts, counter), SESSION_SECRET: SECRET };
+  const token = await signToken(1, SECRET, 1000);
+  const res = await handleContentUnit(unitReq('/content/packs/p-2', token), env, 1000);
+  assert.equal(res.status, 200);
+});
+
+// 计数主体要能分清「谁在扒」：匿名按 IP 前缀，登录账号按账号前缀，
+// 不能让带 token 的请求悄悄并进 IP 那一档、或反过来把匿名算进别人的账号额度。
+test('匿名请求按 ip: 前缀计数，不是按账号', async () => {
+  const counter = { n: 0 };
+  const log = { hits: [], errors: [] };
+  const env = { DB: countingDb(ROWS, [], counter, log), SESSION_SECRET: SECRET };
+  await handleContentUnit(unitReq('/content/packs/p-1'), env, 1000);
+  assert.equal(log.hits.length, 1);
+  assert.equal(log.hits[0][0], 'ip:1.1.1.1');
+  assert.equal(log.hits[0][1], dayKey(1000));
+});
+
+test('登录账号请求按 acct: 前缀计数，不按 IP', async () => {
+  const accounts = [{ id: 1, status: 'active', trial_ends_at: null }];
+  const counter = { n: 0 };
+  const log = { hits: [], errors: [] };
+  const env = { DB: countingDb(ROWS, accounts, counter, log), SESSION_SECRET: SECRET };
+  const token = await signToken(1, SECRET, 1000);
+  await handleContentUnit(unitReq('/content/packs/p-2', token), env, 1000);
+  assert.equal(log.hits[0][0], 'acct:1');
+});
+
+// free 单元本不需要登录，但带了有效 token 的请求应该并入账号额度而不是 IP
+// 额度——这正是 requireAccount 要在判定之前统一调用一次的原因。
+test('free 单元带有效 token 也按账号计数', async () => {
+  const accounts = [{ id: 1, status: 'active', trial_ends_at: null }];
+  const counter = { n: 0 };
+  const log = { hits: [], errors: [] };
+  const env = { DB: countingDb(ROWS, accounts, counter, log), SESSION_SECRET: SECRET };
+  const token = await signToken(1, SECRET, 1000);
+  const res = await handleContentUnit(unitReq('/content/packs/p-1', token), env, 1000);
+  assert.equal(res.status, 200);
+  assert.equal(log.hits[0][0], 'acct:1');
+});
+
+// 超限那一刻要落 error_log，不然「谁在扒」这件事在生产环境里就无从查起。
+test('超限时把 subject 写进 error_log', async () => {
+  const counter = { n: ANON_DAILY_LIMIT };
+  const log = { hits: [], errors: [] };
+  const env = { DB: countingDb(ROWS, [], counter, log), SESSION_SECRET: SECRET };
+  const res = await handleContentUnit(unitReq('/content/packs/p-1'), env, 1000);
+  assert.equal(res.status, 429);
+  assert.equal(log.errors.length, 1);
+  const [ts, method, path, name, message] = log.errors[0];
+  assert.equal(ts, 1000);
+  assert.equal(method, 'GET');
+  assert.equal(path, '/content/packs/p-1');
+  assert.equal(name, 'rate_limited');
+  assert.equal(message, 'ip:1.1.1.1');
+});
+
+// 放行的请求不该往 error_log 里写垃圾。
+test('未超限时不写 error_log', async () => {
+  const counter = { n: 0 };
+  const log = { hits: [], errors: [] };
+  const env = { DB: countingDb(ROWS, [], counter, log), SESSION_SECRET: SECRET };
+  await handleContentUnit(unitReq('/content/packs/p-1'), env, 1000);
+  assert.deepEqual(log.errors, []);
+});
+
+// brief 明确要求：计数放在「取到单元、判完权限」之后——不存在的单元不该
+// 消耗额度，否则谁都能靠猜错单元名把别人的计数刷爆。
+test('不存在的单元不消耗计数额度', async () => {
+  const counter = { n: 0 };
+  const log = { hits: [], errors: [] };
+  const env = { DB: countingDb(ROWS, [], counter, log), SESSION_SECRET: SECRET };
+  const res = await handleContentUnit(unitReq('/content/packs/nope'), env, 1000);
+  assert.equal(res.status, 404);
+  assert.equal(counter.n, 0);
+  assert.deepEqual(log.hits, []);
+});
+
+// 没权限（没登录取 paid 单元）同理，也不该消耗额度——那是没看到内容的请求。
+test('没权限被拒的请求不消耗计数额度', async () => {
+  const counter = { n: 0 };
+  const log = { hits: [], errors: [] };
+  const env = { DB: countingDb(ROWS, [], counter, log), SESSION_SECRET: SECRET };
+  const res = await handleContentUnit(unitReq('/content/packs/p-2'), env, 1000);
+  assert.equal(res.status, 401);
+  assert.equal(counter.n, 0);
+  assert.deepEqual(log.hits, []);
 });

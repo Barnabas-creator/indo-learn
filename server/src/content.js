@@ -1,12 +1,23 @@
 // 内容下发：清单与单元。授权判定复用 routes.js 里那套（requireAccount + 试用期），
 // 不另起一套——两套判定迟早会跑偏。
-import { listContentUnits, currentContentVersion, getContentUnit } from './db.js';
+import {
+  listContentUnits, currentContentVersion, getContentUnit, bumpContentHits, recordError,
+} from './db.js';
 import { requireAccount, json } from './routes.js';
 
 // 六个模块名写死在这——路径里的 module 段是用户可控输入，不核对白名单就
 // 直接拼进 SQL 参数，虽然是走 bind() 不会注入，但非法模块名也不该白白
 // 查一次库，404 更快也更干净。
 const MODULES = new Set(['packs', 'roots', 'dialogs', 'grammar', 'course', 'listening']);
+
+// 全站单元约 250 个。正常人一天翻不到 400 个，扒全集要连着两天且留痕；
+// 匿名只能看 free 那几个，60 次足够试吃。
+// 这是计数不是配额：拦不住内容最终要送进浏览器，只把「一次性导出全集」
+// 变成看得见、拖得慢的事。
+export const ACCOUNT_DAILY_LIMIT = 400;
+export const ANON_DAILY_LIMIT = 60;
+
+export const dayKey = (now) => new Date(now).toISOString().slice(0, 10);
 
 // 能看全部内容的账号：active，或还在试用期内的 trial。
 // 与 handleContentKey 的判定同源，只是这里不需要区分「过期」和「没激活」——
@@ -59,13 +70,31 @@ export async function handleContentUnit(request, env, now = Date.now()) {
   const row = await getContentUnit(env.DB, module, unitId);
   if (!row) return json({ error: 'not_found' }, 404);
 
+  // 提到判定之前调用一次：free 分支原本不查账号，但带了有效 token 的匿名
+  // 请求应该按账号计数而不是按 IP，两条分支（free/paid）共用这一次查询结果，
+  // 不改变下面六条访问规则本身的判定顺序和结果。
+  const account = await requireAccount(request, env, now);
+
   if (row.tier !== 'free') {
-    const account = await requireAccount(request, env, now);
     if (!account) return json({ error: 'unauthorized' }, 401);
     if (account.status === 'disabled') return json({ error: 'account_disabled' }, 403);
     const inTrial = account.status === 'trial' && account.trial_ends_at > now;
     if (account.status === 'trial' && !inTrial) return json({ error: 'trial_expired' }, 403);
     if (account.status !== 'active' && !inTrial) return json({ error: 'not_activated' }, 403);
+  }
+
+  // 计数放在「取到单元、判完权限」之后：不存在的单元、没权限的请求都不消耗
+  // 额度，只数真的换到内容正文这一刻。
+  const accountId = account?.id;
+  const subject = accountId ? `acct:${accountId}` : `ip:${request.headers.get('cf-connecting-ip') ?? '?'}`;
+  const limit = accountId ? ACCOUNT_DAILY_LIMIT : ANON_DAILY_LIMIT;
+  const hits = await bumpContentHits(env.DB, { subject, day: dayKey(now) });
+  if (hits > limit) {
+    // 「有人在扒」是个信号，不是普通错误——记下来，好在 error_log 里查到。
+    await recordError(env.DB, {
+      ts: now, method: 'GET', path: pathname, name: 'rate_limited', message: subject,
+    });
+    return json({ error: 'rate_limited' }, 429);
   }
 
   return json({ version: row.version, body: JSON.parse(row.body) });
