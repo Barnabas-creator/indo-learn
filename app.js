@@ -16,7 +16,7 @@ import {
 import { AUTH_MODE, ADMIN_CONTACT } from './lib/config.js';
 import { normalizeEmail, trialDaysLeft } from './lib/remote-provider.js';
 import { LEVELS, PACKS } from './lib/catalog.js';
-import { packsWithStatus, levelCountsFrom } from './lib/catalog-view.js';
+import { packsWithStatus, levelCountsFrom, refreshContentIndex, resetNavState } from './lib/catalog-view.js';
 import { parentView } from './lib/nav.js';
 
 export function start(root, provider, tts, { history: hist = globalThis.history, win = globalThis } = {}) {
@@ -98,7 +98,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
         showUnlock('', true);
         try {
           await provider.unlock(password);
-          contentIndex = await provider.getIndex();
+          await loadContentIndex();
           render();
         } catch (err) {
           showUnlock(err.message);
@@ -136,7 +136,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
           accountStatus = status;
           accountTrialEndsAt = trialEndsAt;
           if (status === 'active' || status === 'trial') {
-            contentIndex = await provider.getIndex();
+            await loadContentIndex();
             render();
           } else {
             showActivate();
@@ -169,7 +169,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
           accountStatus = status;
           accountTrialEndsAt = trialEndsAt;
           if (status === 'active' || status === 'trial') {
-            contentIndex = await provider.getIndex();
+            await loadContentIndex();
             if (regRes && regRes.code) {
               inApp = false;
               renderCodeIssued(root, { code: regRes.code, onNext: () => { render(); openGuide(); } });
@@ -206,7 +206,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
       code,
       notice,
       adminContact: ADMIN_CONTACT,
-      onLogout: () => { clearPendingCode(); sessionEmail = null; provider.lock(); showLogin(); },
+      onLogout: async () => { clearPendingCode(); sessionEmail = null; await endSession(); showLogin(); },
       onSubmit: async (typed) => {
         showActivate('', true, typed);
         try {
@@ -214,7 +214,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
           accountStatus = status;
           accountTrialEndsAt = trialEndsAt;
           clearPendingCode();
-          contentIndex = await provider.getIndex();
+          await loadContentIndex();
           // 激活成功不直接甩回首页：先给一页鼓励，点「开始学习」再进主界面。
           inApp = false;
           renderActivated(root, { onNext: () => render() });
@@ -257,6 +257,25 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
   async function ensurePackWords(id) {
     if (!packWords.has(id)) packWords.set(id, await provider.getUnit('packs', id));
     return packWords.get(id);
+  }
+
+  // 登录/注册/激活/解锁成功，或应用启动时发现已解锁，都要走这里刷新清单——
+  // 顺带把 packWords 一起清空（见 catalog-view.js 里 refreshContentIndex 的注释）：
+  // 不然同一个标签页里前一个账号缓存过的词包正文会原样喂给刚登进来的这个账号。
+  async function loadContentIndex() {
+    contentIndex = await refreshContentIndex({ getIndex: () => provider.getIndex(), packWords });
+  }
+
+  // 登出、或账号被服务端踢出（内容解不开/会话失效）时统一走这里：内存词包缓存、
+  // 导航状态都要归零，不然下一个在同一标签页登录的账号会看到上一个账号缓存的内容、
+  // 或者直接落在它停留的那个包页上。provider.lock() 现在是 async（清 IndexedDB
+  // 缓存），这里必须 await——不 await 的话 showLogin()/showUnlock() 会在清空完成前
+  // 就把控制权交还，紧接着的登录如果够快，getUnit() 可能在 IndexedDB 清空跑完之前
+  // 就已经用旧数据命中缓存，等于把 Task 8 刚堵上的窗口又撬开一条缝。
+  async function endSession() {
+    packWords.clear();
+    ({ view, level, packId } = resetNavState());
+    await provider.lock();
   }
 
   // 内容是异步取的，取不到就给一句错误 + 回首页，别留白屏。
@@ -639,14 +658,16 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
 
   async function loadPacksAfterUnlock() {
     try {
-      contentIndex = await provider.getIndex();
+      await loadContentIndex();
       render();
     } catch (err) {
       if (FATAL_CONTENT_ERRORS.has(err?.message)) {
         // 走到这里时 session 多半已经被 refreshKey() 清掉了（见上面注释）；
         // 试用到期是其中一种具体原因，登录页要给专门文案，别的原因沿用旧提示。
         const reason = provider.lastRevokeReason ? provider.lastRevokeReason() : null;
-        provider.lock();
+        // 账号在这里被动下线（内容解不开/会话失效），跟主动登出一样要清干净：
+        // 下一个在这台设备登录的账号不该看到这个账号缓存过的内容或停留位置。
+        await endSession();
         if (AUTH_MODE !== 'remote') return showUnlock('内容已更新，请重新输入密码');
         return showLogin(reason === 'trial_expired' ? AUTH_ERRORS.trial_expired : '');
       }
