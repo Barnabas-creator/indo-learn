@@ -38,7 +38,20 @@ export async function handleContentIndex(request, env, now = Date.now()) {
 
   const modules = {};
   for (const r of rows) {
-    (modules[r.module] ??= []).push({ id: r.unit_id, tier: r.tier, title: r.title ?? null });
+    // meta 存的是 JSON 字符串，这里解析成对象再发给前端。坏 JSON（手改库、
+    // 某次推送出岔子）不该让整个清单请求跟着 500——只这一条单元的 meta 退化成
+    // null，其余单元照常返回。
+    let meta = null;
+    if (r.meta) {
+      try {
+        meta = JSON.parse(r.meta);
+      } catch {
+        meta = null;
+      }
+    }
+    (modules[r.module] ??= []).push({
+      id: r.unit_id, tier: r.tier, title: r.title ?? null, meta,
+    });
   }
 
   const res = json({ version, modules });

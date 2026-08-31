@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS content (
   tier     TEXT NOT NULL,
   version  TEXT NOT NULL,
   title    TEXT,
+  meta     TEXT,
   body     TEXT NOT NULL,
   PRIMARY KEY (module, unit_id)
 );

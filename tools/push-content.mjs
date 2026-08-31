@@ -40,9 +40,13 @@ export function buildSql(units, version, builtAt) {
   assertNoDuplicateUnitIds(units);
   const lines = units.map((u) => {
     const title = u.title === null || u.title === undefined ? 'NULL' : sqlQuote(u.title);
-    return 'INSERT OR REPLACE INTO content (module, unit_id, tier, version, title, body) VALUES ('
+    // meta 为 null 要写裸 SQL NULL，不能写成字符串 'null'——查询函数按「解析失败/为
+    // null 就给 null」处理，字符串 'null' 会被 JSON.parse 出一个合法的 null 值，
+    // 跟真正没有 meta 混在一起分不清（虽然结果凑巧一样，但语义上是两回事）。
+    const meta = u.meta === null || u.meta === undefined ? 'NULL' : sqlQuote(JSON.stringify(u.meta));
+    return 'INSERT OR REPLACE INTO content (module, unit_id, tier, version, title, meta, body) VALUES ('
       + `${sqlQuote(u.module)}, ${sqlQuote(u.unitId)}, ${sqlQuote(u.tier)}, ${sqlQuote(version)}, `
-      + `${title}, ${sqlQuote(JSON.stringify(u.body))});`;
+      + `${title}, ${meta}, ${sqlQuote(JSON.stringify(u.body))});`;
   });
   // 先写全部单元，再删旧版本残留，最后落版本号：中途失败最坏是「有新单元但版本号还是旧的」，
   // 前端看到版本没变会继续用缓存，不会拿到半套内容。

@@ -145,13 +145,20 @@ test('清单带 includePaid 时不加 tier 条件', async () => {
   assert.doesNotMatch(db.calls[0].sql, /WHERE tier/);
 });
 
-test('清单返回查到的行', async () => {
+// 10.5A：清单要把 meta 列也选出来，路由层才有东西可解析给前端。
+test('清单 SELECT 带上 meta 列', async () => {
+  const db = fakeDb();
+  await listContentUnits(db, { includePaid: true });
+  assert.match(db.calls[0].sql, /SELECT module, unit_id, tier, title, meta FROM content/);
+});
+
+test('清单返回查到的行，带 meta 原始字符串（路由层负责解析）', async () => {
   const db = fakeDb([[{
-    module: 'packs', unit_id: 'u1', tier: 'free', title: 'T',
+    module: 'packs', unit_id: 'u1', tier: 'free', title: 'T', meta: '{"count":1}',
   }]]);
   const rows = await listContentUnits(db, { includePaid: true });
   assert.deepEqual(rows, [{
-    module: 'packs', unit_id: 'u1', tier: 'free', title: 'T',
+    module: 'packs', unit_id: 'u1', tier: 'free', title: 'T', meta: '{"count":1}',
   }]);
 });
 

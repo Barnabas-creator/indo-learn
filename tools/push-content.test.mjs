@@ -49,3 +49,24 @@ test('不同 module 用同一个 unitId 不算重复', () => {
   ];
   assert.doesNotThrow(() => buildSql(notDup, 'c1', 1000));
 });
+
+// 10.5A：meta 跟 title 一样，null 要写成裸 SQL NULL，不能写成字符串 'null'——
+// 后者会让查询函数把它当成一段合法 JSON 解析出「null 值」，跟真正的空区分不开。
+test('meta 为 null 时 SQL 里是裸 NULL，不是字符串 \'null\'', () => {
+  const units2 = [
+    { module: 'packs', unitId: 'p-1', tier: 'free', title: null, body: [], meta: null },
+  ];
+  const sql = buildSql(units2, 'c1', 1000);
+  assert.match(sql, /NULL, '\[\]'\);/);
+  assert.doesNotMatch(sql, /'null'/);
+});
+
+test('meta 有值时序列化成 JSON 字符串', () => {
+  const units2 = [
+    {
+      module: 'grammar', unitId: 'phonetic', tier: 'paid', title: '发音篇', body: {}, meta: { number: 1, lessons: 3 },
+    },
+  ];
+  const sql = buildSql(units2, 'c1', 1000);
+  assert.match(sql, /\{"number":1,"lessons":3\}/);
+});

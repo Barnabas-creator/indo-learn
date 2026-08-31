@@ -31,9 +31,11 @@ function memDb({ units = [], version = 'c1', accounts = [] } = {}) {
 }
 
 const UNITS = [
-  { module: 'packs', unit_id: 'p-1', tier: 'free', title: null },
-  { module: 'packs', unit_id: 'p-2', tier: 'paid', title: null },
-  { module: 'dialogs', unit_id: 'sapaan', tier: 'free', title: '打招呼' },
+  { module: 'packs', unit_id: 'p-1', tier: 'free', title: null, meta: null },
+  { module: 'packs', unit_id: 'p-2', tier: 'paid', title: null, meta: null },
+  {
+    module: 'dialogs', unit_id: 'sapaan', tier: 'free', title: '打招呼', meta: '{"scene":"greeting","rounds":2}',
+  },
 ];
 
 const get = (token) => new Request('https://api.test/content/index', {
@@ -80,10 +82,47 @@ test('停用账号退回 free 清单，不报错', async () => {
   assert.deepEqual((await res.json()).modules.packs.map((u) => u.id), ['p-1']);
 });
 
-test('清单按模块分组，只有 id/tier/title', async () => {
+test('清单按模块分组，字段是 id/tier/title/meta', async () => {
   const env = { DB: memDb({ units: UNITS }), SESSION_SECRET: SECRET };
   const body = await (await handleContentIndex(get(), env, 1000)).json();
-  assert.deepEqual(body.modules.dialogs, [{ id: 'sapaan', tier: 'free', title: '打招呼' }]);
+  assert.deepEqual(body.modules.dialogs, [{
+    id: 'sapaan', tier: 'free', title: '打招呼', meta: { scene: 'greeting', rounds: 2 },
+  }]);
+});
+
+// 10.5A：meta 存的是 JSON 字符串，路由层要解析成对象才能直接喂给前端。
+test('meta 是 JSON 字符串时解析成对象', async () => {
+  const env = { DB: memDb({ units: UNITS }), SESSION_SECRET: SECRET };
+  const body = await (await handleContentIndex(get(), env, 1000)).json();
+  const dialog = body.modules.dialogs.find((u) => u.id === 'sapaan');
+  assert.deepEqual(dialog.meta, { scene: 'greeting', rounds: 2 });
+});
+
+test('meta 为 null 的单元返回 null', async () => {
+  const env = { DB: memDb({ units: UNITS }), SESSION_SECRET: SECRET };
+  const body = await (await handleContentIndex(get(), env, 1000)).json();
+  const p1 = body.modules.packs.find((u) => u.id === 'p-1');
+  assert.equal(p1.meta, null);
+});
+
+// meta 是坏 JSON（比如库里手改坏了、或者某次推送写入时出了岔子）不该把整个清单
+// 请求打挂——只坏这一条单元的 meta，其余单元照常返回。
+test('meta 是坏 JSON 时该单元的 meta 为 null，不抛错、不影响其它单元', async () => {
+  const badUnits = [
+    ...UNITS,
+    { module: 'grammar', unit_id: 'phonetic', tier: 'free', title: '发音篇', meta: '{not json' },
+  ];
+  const env = { DB: memDb({ units: badUnits }), SESSION_SECRET: SECRET };
+  const res = await handleContentIndex(get(), env, 1000);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  const grammar = body.modules.grammar.find((u) => u.id === 'phonetic');
+  assert.equal(grammar.meta, null);
+  // 坏的那一条不连累别的单元
+  const p1 = body.modules.packs.find((u) => u.id === 'p-1');
+  assert.equal(p1.meta, null);
+  const dialog = body.modules.dialogs.find((u) => u.id === 'sapaan');
+  assert.deepEqual(dialog.meta, { scene: 'greeting', rounds: 2 });
 });
 
 test('清单带私有缓存头，减免费额度的请求数', async () => {
