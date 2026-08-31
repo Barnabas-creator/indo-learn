@@ -93,3 +93,46 @@ export async function recordError(db, {
     .bind(ts, method, path, name, message)
     .run();
 }
+
+// 清单只出 id / tier / title，不带 body——正文一次只发一个单元，是这次改造的重点。
+export async function listContentUnits(db, { includePaid }) {
+  const sql = includePaid
+    ? 'SELECT module, unit_id, tier, title FROM content ORDER BY module, unit_id'
+    : 'SELECT module, unit_id, tier, title FROM content WHERE tier = ? ORDER BY module, unit_id';
+  const stmt = includePaid ? db.prepare(sql) : db.prepare(sql).bind('free');
+  const res = await stmt.all();
+  return res.results ?? [];
+}
+
+export function getContentUnit(db, module, unitId) {
+  return db
+    .prepare('SELECT tier, version, body FROM content WHERE module = ? AND unit_id = ?')
+    .bind(module, unitId)
+    .first();
+}
+
+export async function currentContentVersion(db) {
+  const row = await db.prepare('SELECT version FROM content_meta WHERE id = 1').first();
+  return row?.version ?? null;
+}
+
+// 计数与读取分成两句：D1 的 RETURNING 能一次拿到自增后的值，
+// 省掉「先读再写」中间那段并发窗口。
+export async function bumpContentHits(db, { subject, day }) {
+  const row = await db
+    .prepare(
+      'INSERT INTO content_hits (subject, day, n) VALUES (?, ?, 1) '
+      + 'ON CONFLICT (subject, day) DO UPDATE SET n = n + 1 RETURNING n',
+    )
+    .bind(subject, day)
+    .first();
+  return row?.n ?? 1;
+}
+
+export async function countContentHits(db, { subject, day }) {
+  const row = await db
+    .prepare('SELECT n FROM content_hits WHERE subject = ? AND day = ?')
+    .bind(subject, day)
+    .first();
+  return row?.n ?? 0;
+}

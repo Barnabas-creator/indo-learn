@@ -4,6 +4,7 @@ import {
   createAccount, findAccountByEmail, findAccountById, setAccountStatus,
   insertCode, findCode, bindCode, currentContentKey,
   countAttempts, recordAttempt, recordError, expireCodesOfAccount,
+  listContentUnits, getContentUnit, currentContentVersion, bumpContentHits, countContentHits,
 } from './db.js';
 
 // 假 D1：记录收到的 SQL 与参数，按预设结果返回
@@ -19,6 +20,7 @@ function fakeDb(results = []) {
         bind(...args) { call.args = args; return stmt; },
         async first() { return queue.length ? queue.shift() : null; },
         async run() { return { meta: { last_row_id: 7 } }; },
+        async all() { return { results: queue.length ? queue.shift() : [] }; },
       };
       return stmt;
     },
@@ -128,4 +130,36 @@ test('记一条错误日志', async () => {
   });
   assert.match(db.calls[0].sql, /INSERT INTO error_log/);
   assert.deepEqual(db.calls[0].args, [300, 'POST', '/register', 'TypeError', '坏了']);
+});
+
+test('清单默认只出 free 单元', async () => {
+  const db = fakeDb();
+  await listContentUnits(db, { includePaid: false });
+  assert.match(db.calls[0].sql, /WHERE tier = \?/);
+  assert.deepEqual(db.calls[0].args, ['free']);
+});
+
+test('清单带 includePaid 时不加 tier 条件', async () => {
+  const db = fakeDb();
+  await listContentUnits(db, { includePaid: true });
+  assert.doesNotMatch(db.calls[0].sql, /WHERE tier/);
+});
+
+test('取单元按 module + unit_id 两个键', async () => {
+  const db = fakeDb([{ tier: 'paid', version: 'c1', body: '{"a":1}' }]);
+  const row = await getContentUnit(db, 'packs', 'freq-beginner-001');
+  assert.deepEqual(db.calls[0].args, ['packs', 'freq-beginner-001']);
+  assert.equal(row.version, 'c1');
+});
+
+test('当日计数自增后返回新值', async () => {
+  const db = fakeDb([{ n: 5 }]);
+  const n = await bumpContentHits(db, { subject: 'acct:1', day: '2026-08-31' });
+  assert.match(db.calls[0].sql, /ON CONFLICT/);
+  assert.equal(n, 5);
+});
+
+test('查当日计数，没有行时算 0', async () => {
+  const db = fakeDb([null]);
+  assert.equal(await countContentHits(db, { subject: 'ip:1.1.1.1', day: '2026-08-31' }), 0);
 });
