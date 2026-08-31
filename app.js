@@ -26,7 +26,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
   let packId = null; // 当前打开的包 id
   let detailId = null; // 对话/语法/课程单元的详情 id
   let lessonId = null; // 课程里当前打开的课 id
-  let rootIndex = null; // 词根包在列表里的位置（词根包按顺序排，用下标定位就够）
+  let rootId = null; // 当前打开的词根包 id（按需取现在按 id 请求，不再靠下标）
   let contentIndex = { modules: {} }; // 服务端清单：哪些包已经开放、tier 是什么，只在内存
   const packWords = new Map(); // 已取到的词包正文，包 id → 词条数组；按需取，取过的存这里跨页复用
   let sessionEmail = null; // 当前登录邮箱，用来校验暂存激活码是不是同一个账号的
@@ -278,12 +278,21 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     await provider.lock();
   }
 
+  // 单元取失败时给用户看的话——服务端/provider 抛的是内部错误码，直接甩出去
+  // 用户看不懂，这里翻译成人话。三条码的来源见 lib/server-provider.js：
+  // offline_uncached 是缓存没有又联不上网，rate_limited/not_found 是服务端原样传回来的。
+  const CONTENT_ERRORS = {
+    offline_uncached: '这部分还没下载过，联网后再打开',
+    rate_limited: '今天打开的内容太多了，明天再来',
+    not_found: '这部分内容暂时还没有',
+  };
+
   // 内容是异步取的，取不到就给一句错误 + 回首页，别留白屏。
   function guard(promise, fn) {
     return promise.then(fn).catch((err) => {
       root.innerHTML = '<div class="stack"><div class="crumb">'
         + '<button class="back">← 返回</button></div>'
-        + `<p class="error">内容加载失败：${err.message || '请检查网络后重试'}</p></div>`;
+        + `<p class="error">内容加载失败：${CONTENT_ERRORS[err.message] ?? err.message ?? '请检查网络后重试'}</p></div>`;
       root.querySelector('.back').addEventListener('click', goHome);
     });
   }
@@ -480,22 +489,18 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     }
 
     if (view === 'audioCats') {
-      // 两份内容都要数一下条数才画得出卡片上的「25 组 / 3 段」。
-      return guard(
-        Promise.all([provider.getDialogs(), provider.getListening()]),
-        ([dialogs, listening]) =>
-          mount((m) =>
-            renderAudioCats(m, {
-              counts: { dialogs: dialogs.length, listening: listening.length },
-              back: goBack,
-              open: (id) => goTo(id === 'dialogs' ? 'dialogList' : 'listenList'),
-            }),
-          ),
+      // 两个分类卡片不再显示条数——清单只在真打开列表页时才取，这里不为了一个数字多发请求。
+      return mount((m) =>
+        renderAudioCats(m, {
+          back: goBack,
+          open: (id) => goTo(id === 'dialogs' ? 'dialogList' : 'listenList'),
+        }),
       );
     }
 
     if (view === 'listenList') {
-      return guard(provider.getListening(), (items) =>
+      // 听力整块只有一个单元（id 固定 'all'），列表和详情共用同一次取。
+      return guard(provider.getUnit('listening', 'all'), (items) =>
         mount((m) =>
           renderListenList(m, items, {
             back: goBack,
@@ -506,7 +511,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     }
 
     if (view === 'listenDetail') {
-      return guard(provider.getListening(), (items) =>
+      return guard(provider.getUnit('listening', 'all'), (items) =>
         mount((m) =>
           renderListen(m, items.find((x) => x.id === detailId), { tts, back: goBack }),
         ),
@@ -514,43 +519,37 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     }
 
     if (view === 'dialogList') {
-      return guard(provider.getDialogs(), (dialogs) =>
-        mount((m) =>
-          renderDialogList(m, dialogs, {
-            back: goBack,
-            open: (id) => { detailId = id; goTo('dialogDetail'); },
-          }),
-        ),
+      // 列表页只用清单（已在内存里），不用等网络。
+      const items = (contentIndex.modules.dialogs ?? []).map((u) => ({ id: u.id, sceneZh: u.title }));
+      return mount((m) =>
+        renderDialogList(m, items, {
+          back: goBack,
+          open: (id) => { detailId = id; goTo('dialogDetail'); },
+        }),
       );
     }
 
     if (view === 'dialogDetail') {
-      return guard(provider.getDialogs(), (dialogs) =>
-        mount((m) =>
-          renderDialog(m, dialogs.find((d) => d.id === detailId), {
-            tts,
-            back: goBack,
-          }),
-        ),
+      return guard(provider.getUnit('dialogs', detailId), (dialog) =>
+        mount((m) => renderDialog(m, dialog, { tts, back: goBack })),
       );
     }
 
     if (view === 'rootList') {
-      return guard(provider.getRoots(), (packs) =>
-        mount((m) =>
-          renderRootList(m, packs, {
-            back: goBack,
-            open: (i) => { rootIndex = i; goTo('rootCards'); },
-          }),
-        ),
+      const items = contentIndex.modules.roots ?? [];
+      return mount((m) =>
+        renderRootList(m, items, {
+          back: goBack,
+          open: (id) => { rootId = id; goTo('rootCards'); },
+        }),
       );
     }
 
     if (view === 'rootCards') {
-      return guard(provider.getRoots(), (packs) =>
+      return guard(provider.getUnit('roots', rootId), (pack) =>
         mount((m) =>
           renderRootPack(m, {
-            pack: packs[rootIndex],
+            pack,
             tts,
             back: goBack,
             onComplete: () => goTo('rootCongrats'),
@@ -560,49 +559,49 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     }
 
     if (view === 'rootCongrats') {
-      return guard(provider.getRoots(), (packs) => {
-        // 词根包没有分级，一路顺着背下去，最后一包完了就回列表。
-        const isLast = rootIndex >= packs.length - 1;
-        return mount((m) =>
+      // 「下一包」仍按清单里的顺序算——正文本身不知道自己在第几个。
+      const list = contentIndex.modules.roots ?? [];
+      const at = list.findIndex((p) => p.id === rootId);
+      const isLast = at === -1 || at >= list.length - 1;
+      return guard(provider.getUnit('roots', rootId), (pack) =>
+        mount((m) =>
           renderCongrats(m, {
-            pack: packs[rootIndex],
+            pack,
             nextLabel: isLast ? '回到列表' : '下一包',
             back: () => goUp('rootList'),
             next: () => {
               if (isLast) goUp('rootList');
-              else { rootIndex += 1; goTo('rootCards'); }
+              else { rootId = list[at + 1].id; goTo('rootCards'); }
             },
           }),
-        );
-      });
+        ),
+      );
     }
 
     if (view === 'grammarList') {
-      return guard(provider.getGrammar(), (grammar) =>
-        mount((m) =>
-          renderGrammarList(m, grammar, {
-            back: goBack,
-            open: (id) => { detailId = id; goTo('grammarModule'); },
-          }),
-        ),
+      const items = contentIndex.modules.grammar ?? [];
+      return mount((m) =>
+        renderGrammarList(m, items, {
+          back: goBack,
+          open: (id) => { detailId = id; goTo('grammarModule'); },
+        }),
       );
     }
 
     if (view === 'courseUnits') {
-      return guard(provider.getCourse(), (units) =>
-        mount((m) =>
-          renderCourseUnits(m, units, {
-            back: goBack,
-            open: (id) => { detailId = id; goTo('courseLessons'); },
-          }),
-        ),
+      const items = contentIndex.modules.course ?? [];
+      return mount((m) =>
+        renderCourseUnits(m, items, {
+          back: goBack,
+          open: (id) => { detailId = id; goTo('courseLessons'); },
+        }),
       );
     }
 
     if (view === 'courseLessons') {
-      return guard(provider.getCourse(), (units) =>
+      return guard(provider.getUnit('course', detailId), (unit) =>
         mount((m) =>
-          renderCourseLessons(m, units.find((u) => u.id === detailId), {
+          renderCourseLessons(m, unit, {
             back: goBack,
             open: (id) => { lessonId = id; goTo('courseLesson'); },
           }),
@@ -611,21 +610,17 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     }
 
     if (view === 'courseLesson') {
-      return guard(provider.getCourse(), (units) =>
+      return guard(provider.getUnit('course', detailId), (unit) =>
         mount((m) =>
-          renderCourseLesson(
-            m,
-            units.find((u) => u.id === detailId).lessons.find((l) => l.id === lessonId),
-            { tts, back: goBack },
-          ),
+          renderCourseLesson(m, unit.lessons.find((l) => l.id === lessonId), { tts, back: goBack }),
         ),
       );
     }
 
     if (view === 'grammarModule') {
-      return guard(provider.getGrammar(), (grammar) =>
+      return guard(provider.getUnit('grammar', detailId), (mod) =>
         mount((m) =>
-          renderGrammarLessons(m, grammar.find((g) => g.id === detailId), {
+          renderGrammarLessons(m, mod, {
             back: goBack,
             open: (id) => { lessonId = id; goTo('grammarLesson'); },
           }),
@@ -634,15 +629,14 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     }
 
     if (view === 'grammarLesson') {
-      return guard(provider.getGrammar(), (grammar) => {
-        const mod = grammar.find((g) => g.id === detailId);
-        return mount((m) =>
+      return guard(provider.getUnit('grammar', detailId), (mod) =>
+        mount((m) =>
           renderGrammarLesson(m, mod, mod.lessons.find((l) => l.id === lessonId), {
             tts,
             back: goBack,
           }),
-        );
-      });
+        ),
+      );
     }
   }
 

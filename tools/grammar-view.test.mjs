@@ -1,6 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lessonPages, parseTip, parseNote, visualFor } from '../lib/views/grammar.js';
+import {
+  lessonPages, parseTip, parseNote, visualFor, renderGrammarList,
+} from '../lib/views/grammar.js';
+
+// 极小的手写假 DOM：够 render* 函数 innerHTML 赋值后调 querySelector(All) 绑事件即可，
+// 不引入 jsdom。断言只看渲染出来的 HTML 字符串。
+function fakeRoot() {
+  const stub = { addEventListener() {}, classList: { add() {}, remove() {} } };
+  return { innerHTML: '', querySelector() { return stub; }, querySelectorAll() { return []; } };
+}
 
 const opt = (label) => ({
   label, result: 'r', meaning: 'm', example: 'e', translation: 't',
@@ -73,4 +82,13 @@ test('生词表排在引文后面', () => {
 test('没有注释时返回空数组', () => {
   assert.deepEqual(parseNote(''), []);
   assert.deepEqual(parseNote(undefined), []);
+});
+
+// 列表页现在读清单（{ id, tier, title }），number/subtitle/课数都是正文字段，
+// 清单里没有——传清单条目不该抛错，也不该显示 undefined。
+test('清单条目（无 number/subtitle/lessons）渲染不抛错，标题正常显示', () => {
+  const root = fakeRoot();
+  renderGrammarList(root, [{ id: 'affix', tier: 'free', title: '词缀篇' }], { open() {}, back() {} });
+  assert.match(root.innerHTML, /词缀篇/);
+  assert.doesNotMatch(root.innerHTML, /undefined/);
 });
