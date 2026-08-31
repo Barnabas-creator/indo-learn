@@ -16,6 +16,7 @@ import {
 import { AUTH_MODE, ADMIN_CONTACT } from './lib/config.js';
 import { normalizeEmail, trialDaysLeft } from './lib/remote-provider.js';
 import { LEVELS, PACKS } from './lib/catalog.js';
+import { packsWithStatus, levelCountsFrom } from './lib/catalog-view.js';
 import { parentView } from './lib/nav.js';
 
 export function start(root, provider, tts, { history: hist = globalThis.history, win = globalThis } = {}) {
@@ -26,7 +27,8 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
   let detailId = null; // 对话/语法/课程单元的详情 id
   let lessonId = null; // 课程里当前打开的课 id
   let rootIndex = null; // 词根包在列表里的位置（词根包按顺序排，用下标定位就够）
-  let wordsByPack = {}; // 解锁后的词条表 { 包id: [词条…] }，只在内存
+  let contentIndex = { modules: {} }; // 服务端清单：哪些包已经开放、tier 是什么，只在内存
+  const packWords = new Map(); // 已取到的词包正文，包 id → 词条数组；按需取，取过的存这里跨页复用
   let sessionEmail = null; // 当前登录邮箱，用来校验暂存激活码是不是同一个账号的
   // 试用横幅要用：账号状态与试用到期时间。只有 status === 'trial' 且未过期才显示横幅，
   // 激活成功后 status 变 active，横幅自然消失（下一次 render 就不会再画它）。
@@ -96,7 +98,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
         showUnlock('', true);
         try {
           await provider.unlock(password);
-          wordsByPack = await provider.getPacks();
+          contentIndex = await provider.getIndex();
           render();
         } catch (err) {
           showUnlock(err.message);
@@ -134,7 +136,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
           accountStatus = status;
           accountTrialEndsAt = trialEndsAt;
           if (status === 'active' || status === 'trial') {
-            wordsByPack = await provider.getPacks();
+            contentIndex = await provider.getIndex();
             render();
           } else {
             showActivate();
@@ -167,7 +169,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
           accountStatus = status;
           accountTrialEndsAt = trialEndsAt;
           if (status === 'active' || status === 'trial') {
-            wordsByPack = await provider.getPacks();
+            contentIndex = await provider.getIndex();
             if (regRes && regRes.code) {
               inApp = false;
               renderCodeIssued(root, { code: regRes.code, onNext: () => { render(); openGuide(); } });
@@ -212,7 +214,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
           accountStatus = status;
           accountTrialEndsAt = trialEndsAt;
           clearPendingCode();
-          wordsByPack = await provider.getPacks();
+          contentIndex = await provider.getIndex();
           // 激活成功不直接甩回首页：先给一页鼓励，点「开始学习」再进主界面。
           inApp = false;
           renderActivated(root, { onNext: () => render() });
@@ -235,32 +237,26 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     });
   }
 
-  // 骨架来自 catalog（明文，含尚未开放的包），词条来自加密包
+  // 骨架来自 catalog（明文，含尚未开放的包），「开放没开放」现在看清单，不看词条——
+  // 词条要点进包才按需去取（见 ensurePackWords），这里不用等它。
   function packsOfLevel(id) {
-    // no 是包在这一级里的序号（含准备中的包），跟网格上显示的编号一致，
-    // 好让「背到第几包」在网格和词卡页上是同一个数。
-    return PACKS[id].map((p, i) => ({
-      ...p,
-      no: String(i + 1).padStart(2, '0'),
-      words: wordsByPack[p.id] ?? [],
-    }));
+    return packsWithStatus(PACKS[id], contentIndex.modules);
   }
 
-  // 已开放 = 有词条。「下一包」只在已开放的包之间走，跳过准备中的。
+  // 已开放 = 清单里有这个包。「下一包」只在已开放的包之间走，跳过准备中的。
   function openPacksOfLevel(id) {
-    return packsOfLevel(id).filter((p) => p.words.length);
+    return packsOfLevel(id).filter((p) => p.open);
   }
 
   function levelCounts() {
-    return Object.fromEntries(
-      LEVELS.map((l) => {
-        const packs = packsOfLevel(l.id);
-        return [
-          l.id,
-          { open: packs.filter((p) => p.words.length).length, total: packs.length },
-        ];
-      }),
-    );
+    return levelCountsFrom(PACKS, contentIndex.modules);
+  }
+
+  // 词条按包取，取到就记在内存里；跨页返回不重复请求（provider 那层也有缓存，
+  // 这层只是省掉一次 await 和一次 IndexedDB 往返）。
+  async function ensurePackWords(id) {
+    if (!packWords.has(id)) packWords.set(id, await provider.getUnit('packs', id));
+    return packWords.get(id);
   }
 
   // 内容是异步取的，取不到就给一句错误 + 回首页，别留白屏。
@@ -430,13 +426,8 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
 
     if (view === 'cards') {
       const pack = packsOfLevel(level).find((p) => p.id === packId);
-      return mount((m) =>
-        renderPack(m, {
-          pack,
-          tts,
-          back: goBack,
-          onComplete: () => goTo('congrats'),
-        }),
+      return guard(ensurePackWords(packId), (words) =>
+        mount((m) => renderPack(m, { pack: { ...pack, words }, tts, back: goBack, onComplete: () => goTo('congrats') })),
       );
     }
 
@@ -454,7 +445,9 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
           : '回到分级';
       return mount((m) =>
         renderCongrats(m, {
-          pack: opened[at],
+          // renderCongrats 只用 pack 显示包名/词数，opened[at] 是骨架（无正文），
+          // 正文早在词卡页 ensurePackWords 时就取过、存进 packWords 了，这里直接取。
+          pack: { ...opened[at], words: packWords.get(packId) ?? [] },
           nextLabel,
           // 恭喜页与词卡同层（都挂在包网格底下），返回一律回到包网格。
           back: () => goUp('grid'),
@@ -646,7 +639,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
 
   async function loadPacksAfterUnlock() {
     try {
-      wordsByPack = await provider.getPacks();
+      contentIndex = await provider.getIndex();
       render();
     } catch (err) {
       if (FATAL_CONTENT_ERRORS.has(err?.message)) {
