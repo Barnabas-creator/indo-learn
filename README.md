@@ -312,7 +312,25 @@ node tools/push-content-key.mjs --password "$(cat ~/.indo-pass)"
 
 # 4. 提交并推送，触发 GitHub Pages 自动发布
 git add data sw.js && git commit -m "chore: 发布内容 v6" && git push
+
+# 5. 同步到 Cloudflare Pages（读的是已提交的文件，所以必须排在第 4 步之后）
+bash tools/deploy-pages.sh
 ```
+
+### 两个域名
+
+站点同时挂在两处，内容一模一样：
+
+| 地址 | 托管 | 发布方式 |
+| --- | --- | --- |
+| <https://indo-learn.pages.dev/> | Cloudflare Pages | `bash tools/deploy-pages.sh`（直传，不连 GitHub） |
+| <https://barnabas-creator.github.io/indo-learn/> | GitHub Pages | `git push` 自动 |
+
+pages.dev 是给用户的正式地址，github.io 留着不停（老用户的书签、装到桌面的 PWA
+仍指着它）。**两边都要发**：只推 GitHub 的话 pages.dev 会停在旧版本。
+
+Worker 的 `ALLOWED_ORIGIN`（`server/wrangler.toml`）是逗号分隔的白名单，两个域名都
+在里面；少一个，那个域名上的登录会被浏览器按 CORS 拦掉。改完要 `wrangler deploy`。
 
 **为什么第 2 步必须排在第 4 步前面、且不能跳过**：`remote` 模式下浏览器解密内容靠的是
 服务器下发的密钥（CEK），不是本地密码。如果先推了 Pages（新版密文已经在线上），

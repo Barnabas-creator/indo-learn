@@ -4,9 +4,16 @@ import {
 } from './routes.js';
 import { recordError } from './db.js';
 
-export function corsHeaders(env) {
+// ALLOWED_ORIGIN 是逗号分隔的白名单：站点同时挂在 github.io 和 pages.dev 两个域名上，
+// 而 access-control-allow-origin 一次只能回一个值——按请求的 Origin 挑，挑不中回第一个。
+// 回声式的 CORS 必须配 vary: origin，否则中间缓存会把 A 域名的响应喂给 B 域名。
+export function corsHeaders(env, request) {
+  const allowed = (env.ALLOWED_ORIGIN ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const origin = request?.headers.get('origin');
+  const match = origin && allowed.includes(origin) ? origin : allowed[0] ?? '';
   return {
-    'access-control-allow-origin': env.ALLOWED_ORIGIN ?? '',
+    'access-control-allow-origin': match,
+    vary: 'origin',
     'access-control-allow-headers': 'content-type, authorization',
     'access-control-allow-methods': 'GET, POST, OPTIONS',
     'access-control-max-age': '86400',
@@ -25,7 +32,7 @@ export default {
   // ctx 是 Workers 的 ExecutionContext：register/request-code 里的 Telegram 推送靠它的
   // waitUntil 做成 fire-and-forget（见 routes.js 的 notifyInBackground），不拖慢响应。
   async fetch(request, env, ctx) {
-    const cors = corsHeaders(env);
+    const cors = corsHeaders(env, request);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
     const url = new URL(request.url);

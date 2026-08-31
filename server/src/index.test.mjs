@@ -12,6 +12,27 @@ test('预检请求返回 CORS 头', async () => {
   assert.equal(res.headers.get('access-control-allow-origin'), 'https://example.com');
 });
 
+test('白名单里的第二个域名也能拿到自己的 CORS 头', async () => {
+  const twoOrigins = { ...env, ALLOWED_ORIGIN: 'https://example.com,https://two.test' };
+  const res = await worker.fetch(
+    new Request('https://api.test/login', {
+      method: 'OPTIONS', headers: { origin: 'https://two.test' },
+    }), twoOrigins,
+  );
+  assert.equal(res.headers.get('access-control-allow-origin'), 'https://two.test');
+  assert.equal(res.headers.get('vary'), 'origin');
+});
+
+test('白名单外的 Origin 拿到的是第一个域名，不是自己', async () => {
+  const twoOrigins = { ...env, ALLOWED_ORIGIN: 'https://example.com,https://two.test' };
+  const res = await worker.fetch(
+    new Request('https://api.test/login', {
+      method: 'OPTIONS', headers: { origin: 'https://evil.test' },
+    }), twoOrigins,
+  );
+  assert.equal(res.headers.get('access-control-allow-origin'), 'https://example.com');
+});
+
 test('未知路径返回 404', async () => {
   const res = await worker.fetch(new Request('https://api.test/nope'), env);
   assert.equal(res.status, 404);
