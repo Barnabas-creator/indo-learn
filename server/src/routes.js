@@ -151,7 +151,7 @@ export async function handleLogin(request, env, now = Date.now()) {
   return json({ token, status: account.status, trialEndsAt: account.trial_ends_at ?? null });
 }
 
-async function requireAccount(request, env, now) {
+export async function requireAccount(request, env, now) {
   const auth = request.headers.get('authorization') ?? '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   const accountId = await verifyToken(token, env.SESSION_SECRET, now);

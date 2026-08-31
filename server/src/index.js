@@ -2,6 +2,7 @@
 import {
   handleRegister, handleLogin, handleActivate, handleContentKey, handleRequestCode, json,
 } from './routes.js';
+import { handleContentIndex } from './content.js';
 import { recordError } from './db.js';
 
 // ALLOWED_ORIGIN 是逗号分隔的白名单：站点同时挂在 github.io 和 pages.dev 两个域名上，
@@ -26,6 +27,7 @@ const ROUTES = {
   'POST /activate': handleActivate,
   'POST /request-code': handleRequestCode,
   'GET /content-key': handleContentKey,
+  'GET /content/index': handleContentIndex,
 };
 
 export default {
