@@ -385,3 +385,36 @@ test('没权限被拒的请求不消耗计数额度', async () => {
   assert.equal(counter.n, 0);
   assert.deepEqual(log.hits, []);
 });
+
+// 计数写失败要 fail open：D1 抖动不该把一次本该放行的正常请求变成用户可见的
+// 500——bumpContentHits 抛异常时，请求仍要拿到 200 和正确的正文。
+function throwingHitsDb(rows, accounts = []) {
+  return {
+    prepare(sql) {
+      const stmt = { args: [] };
+      return {
+        bind(...args) { stmt.args = args; return this; },
+        async first() {
+          if (/INSERT INTO content_hits/.test(sql)) throw new Error('D1 write failed');
+          if (/FROM content WHERE module/.test(sql)) {
+            return rows.find((r) => r.module === stmt.args[0] && r.unit_id === stmt.args[1]) ?? null;
+          }
+          if (/FROM accounts WHERE id/.test(sql)) {
+            return accounts.find((a) => a.id === stmt.args[0]) ?? null;
+          }
+          return null;
+        },
+        async run() { return { meta: {} }; },
+        async all() { return { results: [] }; },
+      };
+    },
+  };
+}
+
+test('计数写失败时 fail open：请求仍返回 200 和正确正文', async () => {
+  const env = { DB: throwingHitsDb(ROWS), SESSION_SECRET: SECRET };
+  const res = await handleContentUnit(unitReq('/content/packs/p-1'), env, 1000);
+  assert.equal(res.status, 200);
+  assert.deepEqual((await res.json()).body, [{ w: 'satu' }]);
+});
+

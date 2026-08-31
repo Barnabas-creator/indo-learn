@@ -88,7 +88,16 @@ export async function handleContentUnit(request, env, now = Date.now()) {
   const accountId = account?.id;
   const subject = accountId ? `acct:${accountId}` : `ip:${request.headers.get('cf-connecting-ip') ?? '?'}`;
   const limit = accountId ? ACCOUNT_DAILY_LIMIT : ANON_DAILY_LIMIT;
-  const hits = await bumpContentHits(env.DB, { subject, day: dayKey(now) });
+  // fail open：限流是抬高「一次性导出全集」的成本，不是安全边界——真正兜底权限
+  // 的是上面那段判定。content_hits 写不进去（D1 抖动）不该把一次本该放行的
+  // 正常请求变成用户可见的 500，所以计数失败当作「这次不计数」处理，直接放行，
+  // 跟 index.js 里 recordError 失败「记不下去就算了」是同一条原则。
+  let hits = 0;
+  try {
+    hits = await bumpContentHits(env.DB, { subject, day: dayKey(now) });
+  } catch (err) {
+    console.error('bumpContentHits failed, failing open', err);
+  }
   if (hits > limit) {
     // 「有人在扒」是个信号，不是普通错误——记下来，好在 error_log 里查到。
     await recordError(env.DB, {
