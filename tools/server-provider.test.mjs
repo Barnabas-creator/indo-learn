@@ -197,3 +197,49 @@ test('normalizeEmail、trialDaysLeft 原样搬自 remote-provider，行为不变
   assert.equal(trialDaysLeft(now - 1000, now), 0);
   assert.equal(trialDaysLeft(null), 0);
 });
+
+// ---- 修复轮次 1：审查打回的两处 ----
+
+test('lock 会清空单元缓存：换账号后拿不到上一个账号缓存的正文', async () => {
+  const cache = memCache();
+  const storage = memStorage();
+  const api = fakeApi({ '/content/packs/p-1': { version: 'c1', body: [1] } });
+  const p = createServerProvider({ apiFetch: api.fetch, storage, cache });
+  assert.deepEqual(await p.getUnit('packs', 'p-1'), [1]);
+  await p.lock();
+  // 模拟设备换了个账号登录、暂时没网：getUnit 是 cache-first，如果 lock 没清缓存，
+  // 这里会直接拿到上一个账号缓存下来的正文，服务端鉴权全程不会被触发。
+  const offline = { fetch: async () => { throw new Error('Failed to fetch'); } };
+  const p2 = createServerProvider({ apiFetch: offline.fetch, storage, cache });
+  await assert.rejects(() => p2.getUnit('packs', 'p-1'), /offline_uncached/);
+});
+
+test('REVOKE_ERRORS 触发的会话清理不动单元缓存（跟主动 lock 不是一回事）', async () => {
+  const cache = memCache();
+  const storage = memStorage();
+  const api1 = fakeApi({ '/content/packs/p-1': { version: 'c1', body: [1] } });
+  const p1 = createServerProvider({ apiFetch: api1.fetch, storage, cache });
+  await p1.getUnit('packs', 'p-1');
+
+  storage.setItem('indo-learn-session', JSON.stringify({
+    token: 't', status: 'active', expiresAt: 9e15, email: 'a@b.com',
+  }));
+  const api2 = fakeApi({ '/content/packs/p-2': () => { throw new Error('unauthorized'); } });
+  const p2 = createServerProvider({ apiFetch: api2.fetch, storage, cache });
+  await p2.init();
+  await assert.rejects(() => p2.getUnit('packs', 'p-2'));
+  // 同一账号被吊销，之前缓存的 p-1 依然在——这是被动清会话，不是主动登出换设备
+  assert.deepEqual(await cache.get('packs/p-1'), [1]);
+});
+
+test('getIndex 网络故障且无缓存兜底：统一抛 offline_uncached（跟 getUnit 约定一致）', async () => {
+  const offline = { fetch: async () => { throw new Error('Failed to fetch'); } };
+  const p = createServerProvider({ apiFetch: offline.fetch, storage: memStorage(), cache: memCache() });
+  await assert.rejects(() => p.getIndex(), /offline_uncached/);
+});
+
+test('getIndex 遇 rate_limited：原样抛出，不转成 offline_uncached', async () => {
+  const api = fakeApi({ '/content/index': () => { throw new Error('rate_limited'); } });
+  const p = createServerProvider({ apiFetch: api.fetch, storage: memStorage(), cache: memCache() });
+  await assert.rejects(() => p.getIndex(), /rate_limited/);
+});
