@@ -39,6 +39,11 @@ test('清单里的 id 标成 free，其余 paid', () => {
   assert.equal(units.find((u) => u.unitId === 'p-1').tier, 'free');
   assert.equal(units.find((u) => u.unitId === 'p-2').tier, 'paid');
   assert.equal(units.find((u) => u.module === 'dialogs').tier, 'free');
+  // 补充对完全不在 freeIds 里的模块的断言，确保缺失模块按全 paid 处理
+  assert.equal(units.find((u) => u.module === 'roots').tier, 'paid');
+  assert.equal(units.find((u) => u.module === 'grammar').tier, 'paid');
+  assert.equal(units.find((u) => u.module === 'course').tier, 'paid');
+  assert.equal(units.find((u) => u.module === 'listening').tier, 'paid');
 });
 
 test('标题：对话取 sceneZh、语法取 title、教材取 titleZh，词包留空', () => {
