@@ -128,6 +128,57 @@ test('/content/index 走完整链路：响应的 vary 同时带 origin 和 autho
   assert.ok(vary.includes('authorization'), `vary 缺 authorization，实际是: ${res.headers.get('vary')}`);
 });
 
+// path.startsWith('/content/') 这条前缀规则要落到 handleContentUnit，但
+// /content/index 必须仍然精确命中 ROUTES 表里的 handleContentIndex——查表在
+// 前缀判断之前，理论上不会被截走，但这是路由表这次改动里最容易踩的坑
+// （前缀条件写反顺序、或者以后有人把 ROUTES 查表结果当 falsy 处理，都会让
+// /content/index 误入 handleContentUnit，被当成 module="index" 解析后 404）。
+test('/content/index 走前缀改动后依然精确命中 handleContentIndex，不会被 /content/ 前缀规则截走', async () => {
+  const db = {
+    prepare(sql) {
+      return {
+        bind() { return this; },
+        async first() {
+          if (/FROM content_meta/.test(sql)) return { version: 'c1' };
+          return null;
+        },
+        async all() { return { results: [] }; },
+      };
+    },
+  };
+  const res = await worker.fetch(new Request('https://api.test/content/index'), { ...env, DB: db });
+  // 如果误入 handleContentUnit，会把 pathname 解析成 module='index'、unitId=undefined，
+  // 直接 404 not_found；命中 handleContentIndex 则是 200，body 里有 modules 字段
+  // （handleContentUnit 的成功响应里没有这个字段，是 version + body）。
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.ok('modules' in body, `期望走 handleContentIndex（有 modules 字段），实际 body: ${JSON.stringify(body)}`);
+});
+
+// /content/:module/:id 这条动态路径本身也要真的能通过前缀规则命中 handleContentUnit，
+// 不能只验证 /content/index 没被误伤——两头都要盖到。
+test('GET /content/packs/p-1 命中前缀规则，走完整链路到 handleContentUnit', async () => {
+  const db = {
+    prepare(sql) {
+      const stmt = { args: [] };
+      return {
+        bind(...args) { stmt.args = args; return this; },
+        async first() {
+          if (/FROM content WHERE module/.test(sql) && stmt.args[0] === 'packs' && stmt.args[1] === 'p-1') {
+            return { tier: 'free', version: 'c1', body: '[]' };
+          }
+          return null;
+        },
+        async all() { return { results: [] }; },
+      };
+    },
+  };
+  const res = await worker.fetch(new Request('https://api.test/content/packs/p-1'), { ...env, DB: db });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.version, 'c1');
+});
+
 test('POST /request-code 能命中路由（不再是 404）', async () => {
   const res = await worker.fetch(
     new Request('https://api.test/request-code', { method: 'POST' }),

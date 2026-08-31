@@ -1,7 +1,12 @@
 // 内容下发：清单与单元。授权判定复用 routes.js 里那套（requireAccount + 试用期），
 // 不另起一套——两套判定迟早会跑偏。
-import { listContentUnits, currentContentVersion } from './db.js';
+import { listContentUnits, currentContentVersion, getContentUnit } from './db.js';
 import { requireAccount, json } from './routes.js';
+
+// 六个模块名写死在这——路径里的 module 段是用户可控输入，不核对白名单就
+// 直接拼进 SQL 参数，虽然是走 bind() 不会注入，但非法模块名也不该白白
+// 查一次库，404 更快也更干净。
+const MODULES = new Set(['packs', 'roots', 'dialogs', 'grammar', 'course', 'listening']);
 
 // 能看全部内容的账号：active，或还在试用期内的 trial。
 // 与 handleContentKey 的判定同源，只是这里不需要区分「过期」和「没激活」——
@@ -36,4 +41,27 @@ export async function handleContentIndex(request, env, now = Date.now()) {
   // （见 index.js 里合并响应头那段），这里只管自己该声明的那一条。
   res.headers.set('vary', 'authorization');
   return res;
+}
+
+// 单元正文按 tier 判定权限：free 直接给，paid 复用 requireAccount + 试用期那套
+// 判定（与 handleContentKey 同源），错误码也照抄——前端已经在按这几个 error
+// 值分支提示用户，这里另起一套字符串只会让同一种状况在两个接口报不同的话。
+export async function handleContentUnit(request, env, now = Date.now()) {
+  const { pathname } = new URL(request.url);
+  const [, , module, unitId] = pathname.split('/');
+  if (!MODULES.has(module) || !unitId) return json({ error: 'not_found' }, 404);
+
+  const row = await getContentUnit(env.DB, module, unitId);
+  if (!row) return json({ error: 'not_found' }, 404);
+
+  if (row.tier !== 'free') {
+    const account = await requireAccount(request, env, now);
+    if (!account) return json({ error: 'unauthorized' }, 401);
+    if (account.status === 'disabled') return json({ error: 'account_disabled' }, 403);
+    const inTrial = account.status === 'trial' && account.trial_ends_at > now;
+    if (account.status === 'trial' && !inTrial) return json({ error: 'trial_expired' }, 403);
+    if (account.status !== 'active' && !inTrial) return json({ error: 'not_activated' }, 403);
+  }
+
+  return json({ version: row.version, body: JSON.parse(row.body) });
 }
