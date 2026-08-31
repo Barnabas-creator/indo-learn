@@ -145,6 +145,16 @@ test('清单带 includePaid 时不加 tier 条件', async () => {
   assert.doesNotMatch(db.calls[0].sql, /WHERE tier/);
 });
 
+test('清单返回查到的行', async () => {
+  const db = fakeDb([[{
+    module: 'packs', unit_id: 'u1', tier: 'free', title: 'T',
+  }]]);
+  const rows = await listContentUnits(db, { includePaid: true });
+  assert.deepEqual(rows, [{
+    module: 'packs', unit_id: 'u1', tier: 'free', title: 'T',
+  }]);
+});
+
 test('取单元按 module + unit_id 两个键', async () => {
   const db = fakeDb([{ tier: 'paid', version: 'c1', body: '{"a":1}' }]);
   const row = await getContentUnit(db, 'packs', 'freq-beginner-001');
@@ -152,10 +162,21 @@ test('取单元按 module + unit_id 两个键', async () => {
   assert.equal(row.version, 'c1');
 });
 
+test('取当前内容版本', async () => {
+  const db = fakeDb([{ version: 'c3' }]);
+  assert.equal(await currentContentVersion(db), 'c3');
+});
+
+test('取当前内容版本，没有行时为 null', async () => {
+  const db = fakeDb([null]);
+  assert.equal(await currentContentVersion(db), null);
+});
+
 test('当日计数自增后返回新值', async () => {
   const db = fakeDb([{ n: 5 }]);
   const n = await bumpContentHits(db, { subject: 'acct:1', day: '2026-08-31' });
   assert.match(db.calls[0].sql, /ON CONFLICT/);
+  assert.deepEqual(db.calls[0].args, ['acct:1', '2026-08-31']);
   assert.equal(n, 5);
 });
 
