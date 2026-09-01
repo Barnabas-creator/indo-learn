@@ -34,6 +34,35 @@ test('清单条目（title 为 null，无 subtitle/words）渲染不抛错、不
   assert.doesNotMatch(root.innerHTML, /\d+\s*词根/);
 });
 
+// 10.5B：subtitle/count 从清单 meta 摊平回来（见 app.js rootList 分支），
+// 恢复 Task 10 删掉的两处显示：副标题、以及包列表页顶部「共 N 包 / M 个词根」的总数。
+test('meta 摊平后的 subtitle/count 摆出来，总词根数按 count 求和', () => {
+  const root = fakeRoot();
+  renderRootList(root, [
+    { id: 'root-01', title: '身体部位', subtitle: '常见身体部位词根', count: 12 },
+    { id: 'root-02', title: '动作动词', subtitle: '高频动作词根', count: 8 },
+  ], { open() {}, back() {} });
+  assert.match(root.innerHTML, /身体部位/);
+  assert.match(root.innerHTML, /常见身体部位词根/);
+  assert.match(root.innerHTML, /12\s*词根/);
+  assert.match(root.innerHTML, /20\s*个词根/); // 12 + 8 求和
+  assert.doesNotMatch(root.innerHTML, /undefined/);
+});
+
+// count/subtitle 为 null（坏数据兜底、新模块没给 meta）时不崩、不猜、不显示 undefined，
+// 跟「title 也是 null」那条测试是同一类问题，但这条专测「title 有了、meta 没有」的情形——
+// 10.5A 之后 title 已经不再恒为 null，需要单独盯住 meta 那半边。
+test('title 有了但 meta 为 null（subtitle/count 缺席）时不崩、不猜、不显示 undefined', () => {
+  const root = fakeRoot();
+  assert.doesNotThrow(() => {
+    renderRootList(root, [{ id: 'root-01', title: '身体部位' }], { open() {}, back() {} });
+  });
+  assert.match(root.innerHTML, /身体部位/);
+  assert.doesNotMatch(root.innerHTML, /undefined/);
+  assert.doesNotMatch(root.innerHTML, /\d+\s*词根/);
+  assert.doesNotMatch(root.innerHTML, /个词根/); // 顶部总数也该省略，不是显示 0 个词根
+});
+
 test('点开卡片按 id 而不是下标（rootId 现在按 id 取单元）', () => {
   const clicked = [];
   const root = {

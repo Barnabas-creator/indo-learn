@@ -62,6 +62,15 @@ test('认不出的篇退回默认图，不挂断链', () => {
   assert.match(visualFor(undefined), /affix\.svg$/);
 });
 
+// 10.5B：visualFor 优先认 meta.visual 摊平来的 mod.visual，认不出（不在 VISUALS
+// 里，或压根没给）才退回 mod.id——四篇现有内容的 visual 字段值（sound/frame/morph）
+// 都不在 VISUALS 里，所以退回 id 是现有内容的实际路径，必须验证这条不受影响。
+test('visualFor 优先认 mod.visual，认不出时退回 mod.id', () => {
+  assert.match(visualFor({ id: 'affix', visual: 'syntax' }), /syntax\.svg$/); // visual 命中优先
+  assert.match(visualFor({ id: 'phonetic', visual: 'sound' }), /phonetic\.svg$/); // visual 不认得，退回 id
+  assert.match(visualFor({ id: 'phonetic', visual: null }), /phonetic\.svg$/); // meta 为 null 同样退回 id
+});
+
 // 书里的注释是一整段挤在一起的：生词、对话的另外半句、又例，全用「·」「｜」串成一行。
 // 更糟的是引来的对话只留了一句当例句，另外半句藏在「对话：」后面混在生词堆里——
 // 于是注释里出现的词在页面上找不到出处。拆开才看得见。
@@ -84,11 +93,28 @@ test('没有注释时返回空数组', () => {
   assert.deepEqual(parseNote(undefined), []);
 });
 
-// 列表页现在读清单（{ id, tier, title }），number/subtitle/课数都是正文字段，
-// 清单里没有——传清单条目不该抛错，也不该显示 undefined。
-test('清单条目（无 number/subtitle/lessons）渲染不抛错，标题正常显示', () => {
+// 10.5B：number/subtitle/lessons 从清单 meta 摊平回来（见 app.js grammarList 分支）。
+// 恢复 Task 10 删掉的三处显示：课号、副标题、以及「N 课」。
+test('meta 摊平后的 number/subtitle/lessons 摆出来', () => {
   const root = fakeRoot();
-  renderGrammarList(root, [{ id: 'affix', tier: 'free', title: '词缀篇' }], { open() {}, back() {} });
+  renderGrammarList(root, [{
+    id: 'affix', title: '词缀篇', number: '03', subtitle: '前后缀怎么变词', lessons: 12,
+  }], { open() {}, back() {} });
+  assert.match(root.innerHTML, /词缀篇/);
+  assert.match(root.innerHTML, /03/);
+  assert.match(root.innerHTML, /前后缀怎么变词/);
+  assert.match(root.innerHTML, /12\s*课/);
+  assert.doesNotMatch(root.innerHTML, /undefined/);
+});
+
+// number/subtitle/lessons 为 null（坏数据兜底、新模块没给 meta）时不崩、不猜、
+// 不显示 undefined——标题照常显示。
+test('清单条目 meta 为 null（无 number/subtitle/lessons）渲染不抛错，标题正常显示', () => {
+  const root = fakeRoot();
+  assert.doesNotThrow(() => {
+    renderGrammarList(root, [{ id: 'affix', title: '词缀篇' }], { open() {}, back() {} });
+  });
   assert.match(root.innerHTML, /词缀篇/);
   assert.doesNotMatch(root.innerHTML, /undefined/);
+  assert.doesNotMatch(root.innerHTML, /\d+\s*课/);
 });

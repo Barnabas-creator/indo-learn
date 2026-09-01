@@ -9,20 +9,40 @@ function fakeRoot() {
   return { innerHTML: '', querySelector() { return stub; }, querySelectorAll() { return []; } };
 }
 
-// 列表页现在读清单（{ id, sceneZh }，见 app.js dialogList 分支）——scene（印尼语原名，
-// 本来就跟标题重复）和 lines（详情才有）清单里都没有。没有 lines 时不该抛错，
-// 也不该画出「undefined 轮」。
-test('清单条目没有 lines 时不画「N 轮」，也不再画 scene 那行', () => {
+// 10.5B：scene/rounds 从清单 meta 摊平回来（见 app.js dialogList 分支：
+// meta.scene → scene，meta.rounds → rounds，rounds 是数字不是数组）。
+// 恢复 Task 10 删掉的两处显示：印尼语场景名、以及「N 轮」。
+test('meta 摊平后的 scene/rounds 摆出来', () => {
   const root = fakeRoot();
-  renderDialogList(root, [{ id: 'd-1', sceneZh: '点餐' }], { open() {}, back() {} });
+  renderDialogList(root, [{ id: 'd-1', sceneZh: '点餐', scene: 'Memesan Makanan', rounds: 6 }], {
+    open() {}, back() {},
+  });
+  assert.match(root.innerHTML, /点餐/);
+  assert.match(root.innerHTML, /Memesan Makanan/);
+  assert.match(root.innerHTML, /6\s*轮/);
+  assert.doesNotMatch(root.innerHTML, /undefined/);
+});
+
+// scene/rounds 为 null（坏数据兜底、新模块没给 meta）时不崩、不猜、不显示 undefined。
+test('scene/rounds 为 null 时对应两块整段省略，不画 undefined', () => {
+  const root = fakeRoot();
+  assert.doesNotThrow(() => {
+    renderDialogList(root, [{ id: 'd-1', sceneZh: '点餐', scene: null, rounds: null }], {
+      open() {}, back() {},
+    });
+  });
   assert.match(root.innerHTML, /点餐/);
   assert.doesNotMatch(root.innerHTML, /轮/);
   assert.doesNotMatch(root.innerHTML, /class="dialog-id"/);
   assert.doesNotMatch(root.innerHTML, /undefined/);
 });
 
-test('传了 lines 时仍然画「N 轮」', () => {
+// 清单条目压根没给 scene/rounds 字段（不是显式 null，是 undefined）也要一样扛住——
+// 这是清单条目最原始的形状：只有 id/sceneZh 时同样不能崩、不能画 undefined。
+test('清单条目没有 scene/rounds 字段时同样不崩、不画 undefined', () => {
   const root = fakeRoot();
-  renderDialogList(root, [{ id: 'd-1', sceneZh: '点餐', lines: [{}, {}] }], { open() {}, back() {} });
-  assert.match(root.innerHTML, /2 轮/);
+  renderDialogList(root, [{ id: 'd-1', sceneZh: '点餐' }], { open() {}, back() {} });
+  assert.match(root.innerHTML, /点餐/);
+  assert.doesNotMatch(root.innerHTML, /轮/);
+  assert.doesNotMatch(root.innerHTML, /undefined/);
 });

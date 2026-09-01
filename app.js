@@ -489,9 +489,16 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     }
 
     if (view === 'audioCats') {
-      // 两个分类卡片不再显示条数——清单只在真打开列表页时才取，这里不为了一个数字多发请求。
+      // 条数从清单摊平：对话数是 modules.dialogs 条目的个数，听力数是
+      // modules.listening 那个唯一单元（unitId 恒为 'all'，见 tools/content-units.mjs
+      // 的 whole 型）的 meta.count。清单已经在内存里，不用为了这两个数字多发请求。
+      const counts = {
+        dialogs: contentIndex.modules.dialogs?.length ?? null,
+        listening: contentIndex.modules.listening?.[0]?.meta?.count ?? null,
+      };
       return mount((m) =>
         renderAudioCats(m, {
+          counts,
           back: goBack,
           open: (id) => goTo(id === 'dialogs' ? 'dialogList' : 'listenList'),
         }),
@@ -519,8 +526,12 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     }
 
     if (view === 'dialogList') {
-      // 列表页只用清单（已在内存里），不用等网络。
-      const items = (contentIndex.modules.dialogs ?? []).map((u) => ({ id: u.id, sceneZh: u.title }));
+      // 列表页只用清单（已在内存里），不用等网络。scene/rounds 从 meta 摊平；
+      // meta 可能是 null（坏数据兜底、新模块没给 meta），摊平时就近兜成 null，
+      // 视图那边看到 null 会自己省略，不会崩、不会画出 undefined。
+      const items = (contentIndex.modules.dialogs ?? []).map((u) => ({
+        id: u.id, sceneZh: u.title, scene: u.meta?.scene ?? null, rounds: u.meta?.rounds ?? null,
+      }));
       return mount((m) =>
         renderDialogList(m, items, {
           back: goBack,
@@ -536,7 +547,11 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     }
 
     if (view === 'rootList') {
-      const items = contentIndex.modules.roots ?? [];
+      // subtitle/count 从 meta 摊平；meta 可能是 null（坏数据兜底、新模块没给
+      // meta），摊平时就近兜成 null，视图那边看到 null 会自己省略，不猜词数。
+      const items = (contentIndex.modules.roots ?? []).map((u) => ({
+        id: u.id, title: u.title, subtitle: u.meta?.subtitle ?? null, count: u.meta?.count ?? null,
+      }));
       return mount((m) =>
         renderRootList(m, items, {
           back: goBack,
@@ -579,7 +594,16 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     }
 
     if (view === 'grammarList') {
-      const items = contentIndex.modules.grammar ?? [];
+      // number/subtitle/visual/lessons 从 meta 摊平；meta 可能是 null（坏数据
+      // 兜底、新模块没给 meta），摊平时就近兜成 null，视图那边看到 null 会自己省略。
+      const items = (contentIndex.modules.grammar ?? []).map((u) => ({
+        id: u.id,
+        title: u.title,
+        number: u.meta?.number ?? null,
+        subtitle: u.meta?.subtitle ?? null,
+        visual: u.meta?.visual ?? null,
+        lessons: u.meta?.lessons ?? null,
+      }));
       return mount((m) =>
         renderGrammarList(m, items, {
           back: goBack,
@@ -589,7 +613,19 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     }
 
     if (view === 'courseUnits') {
-      const items = contentIndex.modules.course ?? [];
+      // titleZh 是清单条目自己的 title（正文 titleZh）；number/title(印尼语原名)/
+      // goal/level/lessons 从 meta 摊平。meta 可能是 null（坏数据兜底、新模块没给
+      // meta），摊平时就近兜成 null，视图那边看到 null 会自己省略，level 缺了按
+      // A1 分组（跟 Task 10 之前的默认值一致）。
+      const items = (contentIndex.modules.course ?? []).map((u) => ({
+        id: u.id,
+        titleZh: u.title,
+        title: u.meta?.title ?? null,
+        number: u.meta?.number ?? null,
+        goal: u.meta?.goal ?? null,
+        level: u.meta?.level ?? null,
+        lessons: u.meta?.lessons ?? null,
+      }));
       return mount((m) =>
         renderCourseUnits(m, items, {
           back: goBack,
