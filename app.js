@@ -14,7 +14,7 @@ import {
   AUTH_ERRORS, escapeHtml,
 } from './lib/views/auth.js';
 import { AUTH_MODE, ADMIN_CONTACT } from './lib/config.js';
-import { normalizeEmail, trialDaysLeft } from './lib/remote-provider.js';
+import { normalizeEmail, trialDaysLeft } from './lib/server-provider.js';
 import { LEVELS, PACKS } from './lib/catalog.js';
 import {
   packsWithStatus, levelCountsFrom, refreshContentIndex, resetNavState, isSessionError,
@@ -758,7 +758,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
         // 账号在这里被动下线（内容解不开/会话失效），跟主动登出一样要清干净：
         // 下一个在这台设备登录的账号不该看到这个账号缓存过的内容或停留位置。
         await endSession();
-        if (AUTH_MODE !== 'remote') return showUnlock('内容已更新，请重新输入密码');
+        if (AUTH_MODE !== 'server') return showUnlock('内容已更新，请重新输入密码');
         return showLogin(reason === 'trial_expired' ? AUTH_ERRORS.trial_expired : '');
       }
       showContentRetry();
@@ -784,7 +784,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
       if (!unlocked) {
         // 密码模式没有账号/免费层这套东西——服务端从没参与鉴权，未解锁就只能
         // 进密码页，跟远程模式的免费层分支无关。
-        if (AUTH_MODE !== 'remote') return showUnlock();
+        if (AUTH_MODE !== 'server') return showUnlock();
         // 试用到期是本地时钟一到点就地清会话的（server-provider.js 的 init() 里），
         // 也可能是上一次内容请求时服务端刚拒绝的——两种情况 lastRevokeReason() 都会给出
         // 'trial_expired'，登录页要展示专门的文案，告诉用户「试用结束了」，不能跟下面
