@@ -42,19 +42,35 @@ test('清单里的单元一律可点，不再有 soon/disabled 状态或「已�
 });
 
 // A1/A2 分组要恢复：level 从 meta 摊平，缺了按 A1 分组（跟 Task 10 之前的默认值一致）。
-test('按 level 分成 A1/A2 两组，level 缺了归入 A1', () => {
+//
+// 修复轮次 1：原来这条测试只查了 /A1/、/A2/ 两个字符串在不在，group() 就算把
+// 所有单元都塞进每一组，这条测试照样绿——没有真的验证「归属」。改成按
+// <h3 class="level-head"> 把渲染结果切成一组一组，再断言每组里到底有哪些
+// 标题，确保 u01/u03 真的落在 A1 组、u02 真的落在 A2 组，互不串组。
+test('按 level 分成 A1/A2 两组，level 缺了归入 A1，且组员不串组', () => {
   const root = fakeRoot();
   renderCourseUnits(root, [
     { id: 'u01', titleZh: 'a', level: 'A1' },
     { id: 'u02', titleZh: 'b', level: 'A2' },
     { id: 'u03', titleZh: 'c' }, // 没给 level
   ], { open() {}, back() {} });
-  assert.match(root.innerHTML, /A1/);
-  assert.match(root.innerHTML, /A2/);
-  // A1 组该有 2 个单元（u01 + 没给 level 的 u03），A2 组 1 个。
-  const a1Index = root.innerHTML.indexOf('A1');
-  const a2Index = root.innerHTML.indexOf('A2');
-  assert.ok(a1Index !== -1 && a2Index !== -1);
+
+  const groups = root.innerHTML.split('<h3 class="level-head">').slice(1);
+  const a1Group = groups.find((g) => g.includes('level-tag">A1<'));
+  const a2Group = groups.find((g) => g.includes('level-tag">A2<'));
+  assert.ok(a1Group, 'A1 分组头没找到');
+  assert.ok(a2Group, 'A2 分组头没找到');
+
+  // A1 组该有 2 个单元（u01 + 没给 level 的 u03），A2 组 1 个——数字和实际
+  // 标题都要对得上，不能只看数字（数字对但塞错组，这条测试也要能抓出来）。
+  assert.match(a1Group, /2\s*个单元/);
+  assert.match(a2Group, /1\s*个单元/);
+  assert.match(a1Group, /class="unit-title">a</);
+  assert.match(a1Group, /class="unit-title">c</);
+  assert.doesNotMatch(a1Group, /class="unit-title">b</);
+  assert.match(a2Group, /class="unit-title">b</);
+  assert.doesNotMatch(a2Group, /class="unit-title">a</);
+  assert.doesNotMatch(a2Group, /class="unit-title">c</);
 });
 
 // number/title/goal/lessons 为 null（坏数据兜底、新模块没给 meta）时不崩、不猜、

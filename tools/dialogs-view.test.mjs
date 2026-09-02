@@ -46,3 +46,17 @@ test('清单条目没有 scene/rounds 字段时同样不崩、不画 undefined',
   assert.doesNotMatch(root.innerHTML, /轮/);
   assert.doesNotMatch(root.innerHTML, /undefined/);
 });
+
+// 修复轮次 1（Minor）：sceneZh/scene 是历史遗留没走 esc() 的两处，这次整份重写
+// 顺手补上——清单条目理论上都是我们自己内容管线出来的，不是用户输入，但列表页
+// 拼字符串就该一律过 esc()，不能靠「这个字段来源可信」当例外。
+test('sceneZh/scene 里的 HTML 特殊字符被转义，不会当标签解析', () => {
+  const root = fakeRoot();
+  renderDialogList(root, [{ id: 'd-1', sceneZh: '<b>点餐</b>', scene: '<i>Order</i>' }], {
+    open() {}, back() {},
+  });
+  assert.doesNotMatch(root.innerHTML, /<b>点餐<\/b>/);
+  assert.doesNotMatch(root.innerHTML, /<i>Order<\/i>/);
+  assert.match(root.innerHTML, /&lt;b&gt;点餐&lt;\/b&gt;/);
+  assert.match(root.innerHTML, /&lt;i&gt;Order&lt;\/i&gt;/);
+});

@@ -114,3 +114,68 @@ test('packs 的 meta 是 null——标题骨架都在 lib/catalog.js 里，清�
   const units = splitIntoUnits(content, {});
   assert.equal(units.find((u) => u.unitId === 'p-1').meta, null);
 });
+
+// 修复轮次 1：占位单元（内容还没写，body 是空数组）不该进清单——「清单里有这个 id」
+// 要重新成为「能学」的可靠依据，不然点进去只会看到一个空课列表，是个死路。
+// 这组测试覆盖每个模块自己的空判定字段：course/grammar 看 lessons，roots 看 words，
+// dialogs 看 lines，packs 看词条数组本身，listening 看整个数组。
+
+test('course：lessons 为空数组的单元不进清单，非空的照常进', () => {
+  const withPlaceholder = {
+    ...content,
+    course: [
+      ...content.course,
+      { id: 'u202', number: 2, title: 'Placeholder', titleZh: '占位单元', goal: 'g', level: 'A2', lessons: [] },
+    ],
+  };
+  const units = splitIntoUnits(withPlaceholder, {});
+  const ids = units.filter((u) => u.module === 'course').map((u) => u.unitId);
+  assert.deepEqual(ids, ['u01']);
+  assert.ok(!ids.includes('u202'));
+});
+
+test('grammar：lessons 为空数组的单元不进清单', () => {
+  const withPlaceholder = {
+    ...content,
+    grammar: [
+      ...content.grammar,
+      { id: 'basic', number: 2, title: '占位篇', subtitle: 's', visual: 'v', lessons: [] },
+    ],
+  };
+  const units = splitIntoUnits(withPlaceholder, {});
+  const ids = units.filter((u) => u.module === 'grammar').map((u) => u.unitId);
+  assert.deepEqual(ids, ['phonetic']);
+});
+
+test('roots：words 为空数组的包不进清单', () => {
+  const withPlaceholder = {
+    ...content,
+    roots: [...content.roots, { id: 'r-2', title: '占位词根', subtitle: 's', words: [] }],
+  };
+  const units = splitIntoUnits(withPlaceholder, {});
+  const ids = units.filter((u) => u.module === 'roots').map((u) => u.unitId);
+  assert.deepEqual(ids, ['r-1']);
+});
+
+test('dialogs：lines 为空数组的对话不进清单', () => {
+  const withPlaceholder = {
+    ...content,
+    dialogs: [...content.dialogs, { id: 'kosong', scene: 'x', sceneZh: '占位对话', lines: [] }],
+  };
+  const units = splitIntoUnits(withPlaceholder, {});
+  const ids = units.filter((u) => u.module === 'dialogs').map((u) => u.unitId);
+  assert.deepEqual(ids, ['sapaan']);
+});
+
+test('packs：词条数组为空的包不进清单', () => {
+  const withPlaceholder = { ...content, packs: { ...content.packs, 'p-3': [] } };
+  const units = splitIntoUnits(withPlaceholder, {});
+  const ids = units.filter((u) => u.module === 'packs').map((u) => u.unitId);
+  assert.deepEqual(ids.sort(), ['p-1', 'p-2']);
+});
+
+test('listening：整个数组为空时一个单元都不进清单（不是进去了显示 0 段）', () => {
+  const emptied = { ...content, listening: [] };
+  const units = splitIntoUnits(emptied, {});
+  assert.deepEqual(units.filter((u) => u.module === 'listening'), []);
+});
