@@ -28,8 +28,14 @@ function memDb({ units = [], version = 'c1', accounts = [] } = {}) {
   };
 }
 
+// p-1 显式带一条 body（数据库行本来就有这一列，只是清单路由不该把它选进
+// 响应）——这样「清单不含 body」那条测试才是真的在验证「有 body 也被剔除」，
+// 不是在验证「本来就没有的东西没有出现」（fixture 之前没有任何一条带 body，
+// 那条断言等于没测）。
 const UNITS = [
-  { module: 'packs', unit_id: 'p-1', tier: 'free', title: null, meta: null },
+  {
+    module: 'packs', unit_id: 'p-1', tier: 'free', title: null, meta: null, body: '[{"w":"satu"}]',
+  },
   { module: 'packs', unit_id: 'p-2', tier: 'paid', title: null, meta: null },
   {
     module: 'dialogs', unit_id: 'sapaan', tier: 'free', title: '打招呼', meta: '{"scene":"greeting","rounds":2}',
@@ -64,7 +70,7 @@ test('清单里任何一项都不含 body', async () => {
 
 // 账号状态不再影响清单内容——active/trial 过期/disabled 拿到的都是同一份
 // 全量清单，跟匿名请求一样。这条锁住「清单不按账号过滤」这个新行为，
-// 免得以后有人手滑把 canSeePaid 判定悄悄接回清单路由。
+// 免得以后有人手滑把按账号过滤清单的判定悄悄接回来。
 test('账号状态（active / 试用过期 / disabled）不影响清单内容，都拿到全部单元', async () => {
   const accounts = [
     { id: 1, status: 'active', trial_ends_at: null },

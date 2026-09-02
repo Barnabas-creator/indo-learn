@@ -19,21 +19,6 @@ export const ANON_DAILY_LIMIT = 60;
 
 export const dayKey = (now) => new Date(now).toISOString().slice(0, 10);
 
-// 11.5 拍板：付费单元的存在要让未登录者也看得见（元数据而已，正文仍然按账号
-// 鉴权），所以清单路由不再调用这个函数——但别删：它判的是「这个账号能不能看
-// 付费内容」这件事本身没变，用来判「清单要不要过滤」和用来判「单元正文能不能
-// 发」是两个不同的问题，handleContentUnit 那边的六条访问规则需要按错误类型
-// 分支（401/403 三种），不能简单复用这个只返回布尔值的函数，是就地展开的等价
-// 判定（见下面 handleContentUnit 里的注释）。这个函数目前确实没有调用方了，
-// 留着是因为「清单按账号定制」这类需求随时可能再回来，删了要重写一遍同样的
-// 判定逻辑，风险比留一个没人调的纯函数大。
-export async function canSeePaid(request, env, now) {
-  const account = await requireAccount(request, env, now);
-  if (!account || account.status === 'disabled') return false;
-  if (account.status === 'active') return true;
-  return account.status === 'trial' && account.trial_ends_at > now;
-}
-
 export async function handleContentIndex(request, env, now = Date.now()) {
   // 11.5：清单不再按账号过滤——付费单元的存在要让未登录者也看得见（只发
   // id/tier/title/meta，正文仍然只由 handleContentUnit 按账号鉴权发放）。

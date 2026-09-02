@@ -68,10 +68,10 @@ test('levelCountsFrom 传空对象时返回空对象', () => {
   assert.deepEqual(levelCountsFrom({}, INDEX), {});
 });
 
-// 11.5：判定口径要跟服务端 server/src/content.js 的 canSeePaid 逐条对齐——
-// 两处不一致会让 UI 上的锁和实际能不能取到内容对不上。试用期边界用同一个
-// 比较方向：trialEndsAt > now（服务端是 account.trial_ends_at > now），
-// 「还没到期」才算能看，不是「不晚于」。
+// 11.5：判定口径要跟服务端 server/src/content.js 的 handleContentUnit 里
+// 那段账号判定逐条对齐——两处不一致会让 UI 上的锁和实际能不能取到内容对不上。
+// 试用期边界用同一个比较方向：trialEndsAt > now（服务端是
+// account.trial_ends_at > now），「还没到期」才算能看，不是「不晚于」。
 const NOW = 1_000_000;
 
 test('canSeePaidLocally：active 账号能看付费内容', () => {
