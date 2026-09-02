@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { packsWithStatus, levelCountsFrom } from '../lib/catalog-view.js';
+import { packsWithStatus, levelCountsFrom, needsUnlock } from '../lib/catalog-view.js';
 
 const CATALOG = {
   beginner: [{ id: 'p-1', title: '数字' }, { id: 'p-2', title: '饮料' }],
@@ -64,4 +64,18 @@ test('levelCountsFrom 按级分别计数，互不影响', () => {
 
 test('levelCountsFrom 传空对象时返回空对象', () => {
   assert.deepEqual(levelCountsFrom({}, INDEX), {});
+});
+
+test('paid 单元要解锁，free 不要', () => {
+  assert.equal(needsUnlock({ tier: 'paid' }), true);
+  assert.equal(needsUnlock({ tier: 'free' }), false);
+});
+
+test('准备中的包（清单里没有）不当成要解锁——它是灰的，点不动', () => {
+  assert.equal(needsUnlock({ tier: null, open: false }), false);
+});
+
+test('needsUnlock 传 undefined 不崩——meta/tier 缺失时的兜底', () => {
+  assert.equal(needsUnlock(undefined), false);
+  assert.equal(needsUnlock({}), false);
 });

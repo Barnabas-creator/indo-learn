@@ -16,7 +16,9 @@ import {
 import { AUTH_MODE, ADMIN_CONTACT } from './lib/config.js';
 import { normalizeEmail, trialDaysLeft } from './lib/remote-provider.js';
 import { LEVELS, PACKS } from './lib/catalog.js';
-import { packsWithStatus, levelCountsFrom, refreshContentIndex, resetNavState } from './lib/catalog-view.js';
+import {
+  packsWithStatus, levelCountsFrom, refreshContentIndex, resetNavState, isSessionError,
+} from './lib/catalog-view.js';
 import { parentView } from './lib/nav.js';
 
 export function start(root, provider, tts, { history: hist = globalThis.history, win = globalThis } = {}) {
@@ -288,8 +290,16 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
   };
 
   // 内容是异步取的，取不到就给一句错误 + 回首页，别留白屏。
+  //
+  // 会话吊销类错误（unauthorized/account_disabled/not_activated/trial_expired）
+  // 不走这条错误页——那四个码是内部码，直接显示给用户看不懂。用户点的是付费
+  // 内容，provider 抛出这几个码就说明当前会话看不了，直接把人送去登录页，
+  // 比甩一句「内容加载失败：unauthorized」有用。跳转不清 packWords/导航状态：
+  // 登录成功后 showLogin 的 onSubmit 会重新 render()，让用户回到刚才想看的
+  // 那份内容，不用退回首页重新点一遍。
   function guard(promise, fn) {
     return promise.then(fn).catch((err) => {
+      if (isSessionError(err?.message)) return showLogin(msg(err));
       root.innerHTML = '<div class="stack"><div class="crumb">'
         + '<button class="back">← 返回</button></div>'
         + `<p class="error">内容加载失败：${CONTENT_ERRORS[err.message] ?? err.message ?? '请检查网络后重试'}</p></div>`;
@@ -722,13 +732,19 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
       accountStatus = status;
       accountTrialEndsAt = trialEndsAt ?? null;
       if (!unlocked) {
+        // 密码模式没有账号/免费层这套东西——服务端从没参与鉴权，未解锁就只能
+        // 进密码页，跟远程模式的免费层分支无关。
         if (AUTH_MODE !== 'remote') return showUnlock();
-        // 试用到期是本地时钟一到点就地清会话的（remote-provider.js 的 init() 里），
-        // 也可能是刷新密钥时服务端刚拒绝的——两种情况 lastRevokeReason() 都会给出
-        // 'trial_expired'，登录页要展示专门的文案，不能跟普通的「请重新登录」混在一起。
+        // 试用到期是本地时钟一到点就地清会话的（server-provider.js 的 init() 里），
+        // 也可能是上一次内容请求时服务端刚拒绝的——两种情况 lastRevokeReason() 都会给出
+        // 'trial_expired'，登录页要展示专门的文案，告诉用户「试用结束了」，不能跟下面
+        // 免费层那种「压根没登录过」混在一起悄悄退成匿名访客。
         const reason = provider.lastRevokeReason ? provider.lastRevokeReason() : null;
         if (reason === 'trial_expired') return showLogin(AUTH_ERRORS.trial_expired);
-        return status === 'pending' ? showActivate() : showLogin();
+        // 免费层：没登录过、或注册了还没输激活码（pending），都不拦——直接进主界面，
+        // 清单里自然只有 free 单元（服务端 /content/index 对这两种账号一样按
+        // free-only 返回，见 server/src/content.js 的 canSeePaid）。点到付费内容时
+        // guard() 会把人送去登录页。
       }
       await loadPacksAfterUnlock();
     } catch (err) {

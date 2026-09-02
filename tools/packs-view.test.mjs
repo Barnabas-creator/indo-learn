@@ -59,3 +59,44 @@ test('部分开放时显示「已开放 1 / 2」提示', () => {
   });
   assert.match(root.innerHTML, /已开放 1 \/ 2/);
 });
+
+// Task 11：付费单元挂锁——needsUnlock({tier:'paid'}) 为真的包要带锁标，
+// 但它仍然是「开放」的（在清单里、可点），点进去才会被 provider 拦下要求登录，
+// 所以卡片不能带 disabled。
+test('paid 单元带锁标，但卡片仍可点（不带 disabled）——点进去才会被拦下要求登录', () => {
+  const root = fakeRoot();
+  renderPackGrid(root, {
+    levelTitle: '初级',
+    packs: [{ id: 'p-1', title: '数字', subtitle: '1到10', open: true, tier: 'paid' }],
+    open() {},
+    back() {},
+  });
+  assert.match(root.innerHTML, /pack-lock/);
+  assert.doesNotMatch(root.innerHTML, /disabled/);
+});
+
+test('free 单元不带锁标', () => {
+  const root = fakeRoot();
+  renderPackGrid(root, {
+    levelTitle: '初级',
+    packs: [{ id: 'p-1', title: '数字', subtitle: '1到10', open: true, tier: 'free' }],
+    open() {},
+    back() {},
+  });
+  assert.doesNotMatch(root.innerHTML, /pack-lock/);
+});
+
+// 清单里没有的包 tier 是 null（见 packsWithStatus 注释），不是 undefined——
+// 这里确认 tier 缺失/为 null 时不崩、也不误判成要挂锁。
+test('tier 缺失（undefined 或 null）时不崩，也不挂锁', () => {
+  const root = fakeRoot();
+  assert.doesNotThrow(() => {
+    renderPackGrid(root, {
+      levelTitle: '初级',
+      packs: [{ id: 'p-1', title: '数字', subtitle: '1到10', open: false, tier: null }],
+      open() {},
+      back() {},
+    });
+  });
+  assert.doesNotMatch(root.innerHTML, /pack-lock/);
+});

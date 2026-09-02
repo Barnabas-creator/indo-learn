@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { refreshContentIndex, resetNavState } from '../lib/catalog-view.js';
+import { refreshContentIndex, resetNavState, isSessionError } from '../lib/catalog-view.js';
 
 // 回归测：review round 1 发现 app.js 里的 packWords 内存 Map 登出不清，
 // 会把 Task 8 刚堵上的「跨账号读到缓存正文」漏洞在内存层重现一遍。
@@ -44,4 +44,25 @@ test('resetNavState 回到首页，且不带着上一个账号停留的分级/�
 
 test('resetNavState 每次都给一份新对象——调用方各自解构赋值，互不干扰', () => {
   assert.notEqual(resetNavState(), resetNavState());
+});
+
+// isSessionError：guard() 靠它判断内容取失败要不要跳登录页。四个码来自
+// server-provider.js 的 REVOKE_ERRORS——会话已经不能用了，不是「联不上网/限流」
+// 那种可以就地重试的错误。
+test('四个会话吊销码都判定要跳登录页', () => {
+  assert.equal(isSessionError('unauthorized'), true);
+  assert.equal(isSessionError('account_disabled'), true);
+  assert.equal(isSessionError('not_activated'), true);
+  assert.equal(isSessionError('trial_expired'), true);
+});
+
+test('网络类错误码不跳登录页——离线可用是核心设计，一次联不上网不该把人踢去登录', () => {
+  assert.equal(isSessionError('offline_uncached'), false);
+  assert.equal(isSessionError('rate_limited'), false);
+  assert.equal(isSessionError('not_found'), false);
+});
+
+test('message 缺失（undefined/空串）不误判成要跳登录页', () => {
+  assert.equal(isSessionError(undefined), false);
+  assert.equal(isSessionError(''), false);
 });
