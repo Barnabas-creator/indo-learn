@@ -47,6 +47,29 @@ test('清单条目没有 scene/rounds 字段时同样不崩、不画 undefined',
   assert.doesNotMatch(root.innerHTML, /undefined/);
 });
 
+// 11.5：对话列表挂锁——tier 从清单摊平回来（见 app.js dialogList 分支），
+// 判定跟 packs.js 用同一个 needsUnlock，点击仍然触发 open(id)，是否跳登录
+// 由 app.js 的 open 回调判定，这里只管视觉提示。
+test('paid 且账号看不了付费内容的对话带锁标', () => {
+  const root = fakeRoot();
+  renderDialogList(root, [{ id: 'd-1', sceneZh: '点餐', tier: 'paid' }], { open() {}, back() {} });
+  assert.match(root.innerHTML, /dialog-lock/);
+});
+
+test('free 对话不带锁标', () => {
+  const root = fakeRoot();
+  renderDialogList(root, [{ id: 'd-1', sceneZh: '点餐', tier: 'free' }], { open() {}, back() {} });
+  assert.doesNotMatch(root.innerHTML, /dialog-lock/);
+});
+
+test('paid 对话但账号 active：不带锁标', () => {
+  const root = fakeRoot();
+  renderDialogList(root, [{ id: 'd-1', sceneZh: '点餐', tier: 'paid' }], {
+    open() {}, back() {}, account: { status: 'active', trialEndsAt: null },
+  });
+  assert.doesNotMatch(root.innerHTML, /dialog-lock/);
+});
+
 // 修复轮次 1（Minor）：sceneZh/scene 是历史遗留没走 esc() 的两处，这次整份重写
 // 顺手补上——清单条目理论上都是我们自己内容管线出来的，不是用户输入，但列表页
 // 拼字符串就该一律过 esc()，不能靠「这个字段来源可信」当例外。

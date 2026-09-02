@@ -97,12 +97,13 @@ export async function recordError(db, {
 // 清单出 id / tier / title / meta，不带 body——正文一次只发一个单元，是这次改造的重点。
 // meta 存的是 JSON 字符串，这里原样透出，解析成对象是路由层 handleContentIndex 的事
 // （一行坏 JSON 不该由查询函数决定要不要往外抛错）。
-export async function listContentUnits(db, { includePaid }) {
-  const sql = includePaid
-    ? 'SELECT module, unit_id, tier, title, meta FROM content ORDER BY module, unit_id'
-    : 'SELECT module, unit_id, tier, title, meta FROM content WHERE tier = ? ORDER BY module, unit_id';
-  const stmt = includePaid ? db.prepare(sql) : db.prepare(sql).bind('free');
-  const res = await stmt.all();
+// 11.5：清单对所有人一样，一律出全部单元的元数据——「谁能看正文」由
+// GET /content/:module/:id 按账号鉴权把关，这里不再按 tier 过滤，也就不再需要
+// includePaid 这个参数了（旧调用方全部换掉了，见 content.js handleContentIndex）。
+export async function listContentUnits(db) {
+  const res = await db
+    .prepare('SELECT module, unit_id, tier, title, meta FROM content ORDER BY module, unit_id')
+    .all();
   return res.results ?? [];
 }
 

@@ -86,6 +86,33 @@ test('free 单元不带锁标', () => {
   assert.doesNotMatch(root.innerHTML, /pack-lock/);
 });
 
+// 11.5：needsUnlock 现在按账号状态判定，不再是「tier === 'paid' 就一定锁」——
+// active 账号点开付费包不该看到锁标，这条分支之前没有测试盯着。
+test('paid 单元但账号是 active：不挂锁', () => {
+  const root = fakeRoot();
+  renderPackGrid(root, {
+    levelTitle: '初级',
+    packs: [{ id: 'p-1', title: '数字', subtitle: '1到10', open: true, tier: 'paid' }],
+    open() {},
+    back() {},
+    account: { status: 'active', trialEndsAt: null },
+  });
+  assert.doesNotMatch(root.innerHTML, /pack-lock/);
+});
+
+// 试用过期的账号点付费包，仍然要挂锁——跟不传 account（视同匿名）行为一致。
+test('paid 单元但试用已过期：仍然挂锁', () => {
+  const root = fakeRoot();
+  renderPackGrid(root, {
+    levelTitle: '初级',
+    packs: [{ id: 'p-1', title: '数字', subtitle: '1到10', open: true, tier: 'paid' }],
+    open() {},
+    back() {},
+    account: { status: 'trial', trialEndsAt: 500 },
+  });
+  assert.match(root.innerHTML, /pack-lock/);
+});
+
 // 清单里没有的包 tier 是 null（见 packsWithStatus 注释），不是 undefined——
 // 这里确认 tier 缺失/为 null 时不崩、也不误判成要挂锁。
 test('tier 缺失（undefined 或 null）时不崩，也不挂锁', () => {

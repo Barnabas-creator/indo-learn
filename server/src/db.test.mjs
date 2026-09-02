@@ -132,23 +132,19 @@ test('记一条错误日志', async () => {
   assert.deepEqual(db.calls[0].args, [300, 'POST', '/register', 'TypeError', '坏了']);
 });
 
-test('清单默认只出 free 单元', async () => {
+// 11.5：清单对所有人一样，一律出全部单元——「谁能看」现在是前端按 tier
+// 挂锁的事，不再靠 SQL 按 tier 过滤。includePaid 这个开关因此没有 false 的
+// 调用方了，一并从签名里去掉，别留一个永远为 true 的参数让人误以为还能传别的。
+test('清单 SELECT 不按 tier 过滤，一律出全部单元', async () => {
   const db = fakeDb();
-  await listContentUnits(db, { includePaid: false });
-  assert.match(db.calls[0].sql, /WHERE tier = \?/);
-  assert.deepEqual(db.calls[0].args, ['free']);
-});
-
-test('清单带 includePaid 时不加 tier 条件', async () => {
-  const db = fakeDb();
-  await listContentUnits(db, { includePaid: true });
+  await listContentUnits(db);
   assert.doesNotMatch(db.calls[0].sql, /WHERE tier/);
 });
 
 // 10.5A：清单要把 meta 列也选出来，路由层才有东西可解析给前端。
 test('清单 SELECT 带上 meta 列', async () => {
   const db = fakeDb();
-  await listContentUnits(db, { includePaid: true });
+  await listContentUnits(db);
   assert.match(db.calls[0].sql, /SELECT module, unit_id, tier, title, meta FROM content/);
 });
 
@@ -156,7 +152,7 @@ test('清单返回查到的行，带 meta 原始字符串（路由层负责解�
   const db = fakeDb([[{
     module: 'packs', unit_id: 'u1', tier: 'free', title: 'T', meta: '{"count":1}',
   }]]);
-  const rows = await listContentUnits(db, { includePaid: true });
+  const rows = await listContentUnits(db);
   assert.deepEqual(rows, [{
     module: 'packs', unit_id: 'u1', tier: 'free', title: 'T', meta: '{"count":1}',
   }]);

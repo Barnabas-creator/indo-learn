@@ -73,6 +73,33 @@ test('按 level 分成 A1/A2 两组，level 缺了归入 A1，且组员不串组
   assert.doesNotMatch(a2Group, /class="unit-title">c</);
 });
 
+// 11.5：课程单元列表挂锁——tier 从清单摊平回来（见 app.js courseUnits 分支），
+// 判定跟 packs.js 用同一个 needsUnlock，点击仍然触发 open(id)，是否跳登录
+// 由 app.js 的 open 回调判定。
+test('paid 且账号看不了付费内容的单元带锁标', () => {
+  const root = fakeRoot();
+  renderCourseUnits(root, [{ id: 'u01', titleZh: '第一课', level: 'A1', tier: 'paid' }], {
+    open() {}, back() {},
+  });
+  assert.match(root.innerHTML, /unit-lock/);
+});
+
+test('free 单元不带锁标', () => {
+  const root = fakeRoot();
+  renderCourseUnits(root, [{ id: 'u01', titleZh: '第一课', level: 'A1', tier: 'free' }], {
+    open() {}, back() {},
+  });
+  assert.doesNotMatch(root.innerHTML, /unit-lock/);
+});
+
+test('paid 单元但账号 active：不带锁标', () => {
+  const root = fakeRoot();
+  renderCourseUnits(root, [{ id: 'u01', titleZh: '第一课', level: 'A1', tier: 'paid' }], {
+    open() {}, back() {}, account: { status: 'active', trialEndsAt: null },
+  });
+  assert.doesNotMatch(root.innerHTML, /unit-lock/);
+});
+
 // number/title/goal/lessons 为 null（坏数据兜底、新模块没给 meta）时不崩、不猜、
 // 不显示 undefined——历史上这里读 u.lessons.length，undefined.length 会直接崩。
 test('清单条目（无 number/title/goal/lessons/level）渲染不抛错，标题正常显示', () => {

@@ -284,6 +284,10 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 }
 
 .level-card.soon .level-badge { color: var(--mute); background: var(--card-2); }
+/* 分类卡锁标（对话与听力分类页，11.5）：贴在卡片右下角，跟右上角的
+   .level-badge（开放数/条数）错开，不挤在一起。「锁住」和「soon」是两种
+   状态：soon 只降透明度，锁多一个图标——视觉上不能靠同一种灰混过去。 */
+.level-lock { position: absolute; bottom: 14px; right: 16px; font-size: 14px; line-height: 1; }
 .level-title { font-family: var(--serif); font-size: 26px; font-weight: 700; }
 .level-sub { font-size: 14px; color: var(--ink-2); }
 .level-meta { font-size: 12px; color: var(--gold); margin-top: 6px; }
@@ -544,6 +548,9 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .dialog-zh { font-size: 17px; font-weight: 650; }
 .dialog-id { flex: 1; font-family: var(--serif); font-style: italic; font-size: 13px; color: var(--mute); }
 .dialog-count, .grammar-count { font-size: 12px; color: var(--clove); }
+/* 付费单元锁标（对话/语法列表，11.5）：横排里就是普通一个 flex 子项，
+   跟 .dialog-count/.grammar-count 并排，不用像 .pack-lock 那样绝对定位。 */
+.dialog-lock, .grammar-lock, .unit-lock { flex: none; font-size: 13px; line-height: 1; }
 
 /* 听力页不走 pager（pager-page 自带左右留白），所以要自己留边距，
    否则卡片直接贴着屏幕两侧。 */

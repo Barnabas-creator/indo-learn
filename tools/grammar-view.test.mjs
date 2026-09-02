@@ -107,6 +107,29 @@ test('meta 摊平后的 number/subtitle/lessons 摆出来', () => {
   assert.doesNotMatch(root.innerHTML, /undefined/);
 });
 
+// 11.5：语法篇列表挂锁——tier 从清单摊平回来（见 app.js grammarList 分支），
+// 判定跟 packs.js 用同一个 needsUnlock，点击仍然触发 open(id)，是否跳登录
+// 由 app.js 的 open 回调判定。
+test('paid 且账号看不了付费内容的篇带锁标', () => {
+  const root = fakeRoot();
+  renderGrammarList(root, [{ id: 'affix', title: '词缀篇', tier: 'paid' }], { open() {}, back() {} });
+  assert.match(root.innerHTML, /grammar-lock/);
+});
+
+test('free 篇不带锁标', () => {
+  const root = fakeRoot();
+  renderGrammarList(root, [{ id: 'phonetic', title: '发音篇', tier: 'free' }], { open() {}, back() {} });
+  assert.doesNotMatch(root.innerHTML, /grammar-lock/);
+});
+
+test('paid 篇但账号 active：不带锁标', () => {
+  const root = fakeRoot();
+  renderGrammarList(root, [{ id: 'affix', title: '词缀篇', tier: 'paid' }], {
+    open() {}, back() {}, account: { status: 'active', trialEndsAt: null },
+  });
+  assert.doesNotMatch(root.innerHTML, /grammar-lock/);
+});
+
 // number/subtitle/lessons 为 null（坏数据兜底、新模块没给 meta）时不崩、不猜、
 // 不显示 undefined——标题照常显示。
 test('清单条目 meta 为 null（无 number/subtitle/lessons）渲染不抛错，标题正常显示', () => {

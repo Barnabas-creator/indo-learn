@@ -68,3 +68,59 @@ test('counts 真的是 0 时该分类标灰成 soon', () => {
   const dialogsCard = root.innerHTML.split('教材听力')[0];
   assert.match(dialogsCard, /soon/);
 });
+
+// 11.5：分类卡也要挂锁——「教材听力」整个模块只有一个单元（tier 单一），
+// locked.listening 由 app.js 用 categoryLocked 算出来传进来。锁标跟「soon」
+// 是两种不同状态，不能混：soon 是「这类内容压根还没有」，锁是「有，但账号
+// 看不了正文」，两者视觉上要能区分（不同 class）。
+test('locked.listening 为真时，教材听力带锁标，soon 不带', () => {
+  const root = fakeRoot();
+  renderAudioCats(root, {
+    counts: { dialogs: 5, listening: 9 },
+    locked: { dialogs: false, listening: true },
+    open() {},
+    back() {},
+  });
+  const listeningCard = root.innerHTML.split('情境对话')[1];
+  assert.match(listeningCard, /level-lock/);
+  assert.doesNotMatch(listeningCard, /soon/);
+});
+
+test('locked 为假时不带锁标', () => {
+  const root = fakeRoot();
+  renderAudioCats(root, {
+    counts: { dialogs: 5, listening: 9 },
+    locked: { dialogs: false, listening: false },
+    open() {},
+    back() {},
+  });
+  assert.doesNotMatch(root.innerHTML, /level-lock/);
+});
+
+// 「soon」（count 为 0，内容压根没有）和「锁」（有内容但要登录）不能撞在一起
+// 显示成同一种灰——这里确认两种状态各自的标记互不覆盖：soon 的分类没有锁标，
+// 锁住的分类没有 soon 标记。
+test('soon 与 locked 是两种可区分的状态，不会被同一个 class 盖住', () => {
+  const root = fakeRoot();
+  renderAudioCats(root, {
+    counts: { dialogs: 0, listening: 9 },
+    locked: { dialogs: false, listening: true },
+    open() {},
+    back() {},
+  });
+  const dialogsCard = root.innerHTML.split('教材听力')[0];
+  const listeningCard = root.innerHTML.split('情境对话')[1];
+  assert.match(dialogsCard, /soon/);
+  assert.doesNotMatch(dialogsCard, /level-lock/);
+  assert.match(listeningCard, /level-lock/);
+  assert.doesNotMatch(listeningCard, /\bsoon\b/);
+});
+
+// 不传 locked（历史调用方式）也不该崩、不该误判成锁住。
+test('不传 locked 也不崩、不误判成锁住', () => {
+  const root = fakeRoot();
+  assert.doesNotThrow(() => {
+    renderAudioCats(root, { counts: { dialogs: 5, listening: 9 }, open() {}, back() {} });
+  });
+  assert.doesNotMatch(root.innerHTML, /level-lock/);
+});

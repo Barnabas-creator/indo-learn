@@ -7,7 +7,8 @@ import { signToken } from './crypto.js';
 
 const SECRET = 's';
 
-// 内存假 D1：只认这两条 SQL，够跑清单路由
+// 内存假 D1：只认这两条 SQL，够跑清单路由。11.5 之后清单 SQL 不再带 tier
+// 条件，所以这个假库不用再模拟「按 tier 过滤」那半条分支了——一律照单全收。
 function memDb({ units = [], version = 'c1', accounts = [] } = {}) {
   return {
     prepare(sql) {
@@ -21,10 +22,7 @@ function memDb({ units = [], version = 'c1', accounts = [] } = {}) {
           }
           return null;
         },
-        async all() {
-          const onlyFree = /WHERE tier = \?/.test(sql);
-          return { results: onlyFree ? units.filter((u) => u.tier === 'free') : units };
-        },
+        async all() { return { results: units }; },
       };
     },
   };
@@ -42,44 +40,47 @@ const get = (token) => new Request('https://api.test/content/index', {
   headers: token ? { authorization: `Bearer ${token}` } : {},
 });
 
-test('不带 token 只给 free 单元', async () => {
+// 11.5 拍板：付费单元的存在要让未登录者也看见——清单不再按账号过滤，
+// 匿名请求也该拿到 free 和 paid 全部单元的元数据（谁能看正文是另一条路由的事）。
+test('不带 token 也能拿到全部单元的元数据（free 与 paid 都在里面）', async () => {
   const env = { DB: memDb({ units: UNITS }), SESSION_SECRET: SECRET };
   const body = await (await handleContentIndex(get(), env, 1000)).json();
-  assert.deepEqual(body.modules.packs.map((u) => u.id), ['p-1']);
+  assert.deepEqual(body.modules.packs.map((u) => u.id), ['p-1', 'p-2']);
   assert.equal(body.version, 'c1');
 });
 
-test('active 账号拿到全部单元', async () => {
-  const accounts = [{ id: 1, status: 'active', trial_ends_at: null }];
-  const env = { DB: memDb({ units: UNITS, accounts }), SESSION_SECRET: SECRET };
-  const token = await signToken(1, SECRET, 1000);
-  const body = await (await handleContentIndex(get(token), env, 1000)).json();
-  assert.deepEqual(body.modules.packs.map((u) => u.id), ['p-1', 'p-2']);
+// 底线：清单只发 id/tier/title/meta，正文永远不进清单——这条必须有断言盯着，
+// 不能只靠人肉审查。四个字段之外，任何一项都不该带 body。
+test('清单里任何一项都不含 body', async () => {
+  const env = { DB: memDb({ units: UNITS }), SESSION_SECRET: SECRET };
+  const body = await (await handleContentIndex(get(), env, 1000)).json();
+  const allUnits = Object.values(body.modules).flat();
+  assert.ok(allUnits.length > 0, '这条断言本身得跑在有单元的清单上，不然测不出东西');
+  for (const u of allUnits) {
+    assert.equal('body' in u, false);
+    assert.deepEqual(new Set(Object.keys(u)), new Set(['id', 'tier', 'title', 'meta']));
+  }
 });
 
-test('试用过期的账号退回 free 清单，不报错', async () => {
-  const accounts = [{ id: 1, status: 'trial', trial_ends_at: 500 }];
+// 账号状态不再影响清单内容——active/trial 过期/disabled 拿到的都是同一份
+// 全量清单，跟匿名请求一样。这条锁住「清单不按账号过滤」这个新行为，
+// 免得以后有人手滑把 canSeePaid 判定悄悄接回清单路由。
+test('账号状态（active / 试用过期 / disabled）不影响清单内容，都拿到全部单元', async () => {
+  const accounts = [
+    { id: 1, status: 'active', trial_ends_at: null },
+    { id: 2, status: 'trial', trial_ends_at: 500 }, // 相对 now=1000 已过期
+    { id: 3, status: 'disabled', trial_ends_at: null },
+  ];
   const env = { DB: memDb({ units: UNITS, accounts }), SESSION_SECRET: SECRET };
-  const token = await signToken(1, SECRET, 1000);
-  const body = await (await handleContentIndex(get(token), env, 1000)).json();
-  assert.deepEqual(body.modules.packs.map((u) => u.id), ['p-1']);
-});
-
-test('试用未过期的账号拿到全部单元', async () => {
-  const accounts = [{ id: 1, status: 'trial', trial_ends_at: 2000 }];
-  const env = { DB: memDb({ units: UNITS, accounts }), SESSION_SECRET: SECRET };
-  const token = await signToken(1, SECRET, 1000);
-  const body = await (await handleContentIndex(get(token), env, 1000)).json();
-  assert.deepEqual(body.modules.packs.map((u) => u.id), ['p-1', 'p-2']);
-});
-
-test('停用账号退回 free 清单，不报错', async () => {
-  const accounts = [{ id: 1, status: 'disabled', trial_ends_at: null }];
-  const env = { DB: memDb({ units: UNITS, accounts }), SESSION_SECRET: SECRET };
-  const token = await signToken(1, SECRET, 1000);
-  const res = await handleContentIndex(get(token), env, 1000);
-  assert.equal(res.status, 200);
-  assert.deepEqual((await res.json()).modules.packs.map((u) => u.id), ['p-1']);
+  for (const account of accounts) {
+    const token = await signToken(account.id, SECRET, 1000);
+    const body = await (await handleContentIndex(get(token), env, 1000)).json();
+    assert.deepEqual(
+      body.modules.packs.map((u) => u.id),
+      ['p-1', 'p-2'],
+      `账号状态 ${account.status} 应该拿到全部单元`,
+    );
+  }
 });
 
 test('清单按模块分组，字段是 id/tier/title/meta', async () => {

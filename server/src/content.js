@@ -19,9 +19,14 @@ export const ANON_DAILY_LIMIT = 60;
 
 export const dayKey = (now) => new Date(now).toISOString().slice(0, 10);
 
-// 能看全部内容的账号：active，或还在试用期内的 trial。
-// 与 handleContentKey 的判定同源，只是这里不需要区分「过期」和「没激活」——
-// 清单页对谁都有内容可给（至少有 free 那几个），退回 free 比报错友好。
+// 11.5 拍板：付费单元的存在要让未登录者也看得见（元数据而已，正文仍然按账号
+// 鉴权），所以清单路由不再调用这个函数——但别删：它判的是「这个账号能不能看
+// 付费内容」这件事本身没变，用来判「清单要不要过滤」和用来判「单元正文能不能
+// 发」是两个不同的问题，handleContentUnit 那边的六条访问规则需要按错误类型
+// 分支（401/403 三种），不能简单复用这个只返回布尔值的函数，是就地展开的等价
+// 判定（见下面 handleContentUnit 里的注释）。这个函数目前确实没有调用方了，
+// 留着是因为「清单按账号定制」这类需求随时可能再回来，删了要重写一遍同样的
+// 判定逻辑，风险比留一个没人调的纯函数大。
 export async function canSeePaid(request, env, now) {
   const account = await requireAccount(request, env, now);
   if (!account || account.status === 'disabled') return false;
@@ -30,9 +35,10 @@ export async function canSeePaid(request, env, now) {
 }
 
 export async function handleContentIndex(request, env, now = Date.now()) {
-  const includePaid = await canSeePaid(request, env, now);
+  // 11.5：清单不再按账号过滤——付费单元的存在要让未登录者也看得见（只发
+  // id/tier/title/meta，正文仍然只由 handleContentUnit 按账号鉴权发放）。
   const [rows, version] = await Promise.all([
-    listContentUnits(env.DB, { includePaid }),
+    listContentUnits(env.DB),
     currentContentVersion(env.DB),
   ]);
 
@@ -55,12 +61,19 @@ export async function handleContentIndex(request, env, now = Date.now()) {
   }
 
   const res = json({ version, modules });
+  // 11.5 之后清单对谁都一样（不再按账号过滤），这两条头按理已经不必要了——
+  // 但留着成本为零（同一份响应，多两行头），去掉的风险不为零（账号状态将来
+  // 若再影响清单内容——比如某天又要按账号定制——这两条就得原样加回来，
+  // 到时候未必有人记得当初为什么删）。所以照旧留着，只是下面这两句注释的
+  // 「为什么」要更新一下：不是「不同账号看到的清单不一样」，是「以防万一
+  // 它以后又不一样」。
+  //
   // 清单是所有页面的入口，五分钟私有缓存能把 Workers 的请求数压下来一大截；
-  // private 是必须的——不同账号看到的清单不一样，不能进共享缓存。
+  // private 是必须的——一旦清单又变回按账号定制，就不能进共享缓存。
   res.headers.set('cache-control', 'private, max-age=300');
-  // 响应内容完全由 authorization 头决定（同一 URL，不同 token 返回不同清单）。
-  // 浏览器私有缓存默认只按 URL 做 key，不加这个 vary，同一浏览器 300 秒内换账号
-  // 会直接吃到上一个账号缓存的清单，看到对方的付费单元 id。
+  // 浏览器私有缓存默认只按 URL 做 key。现在清单内容不看 authorization，这条
+  // vary 暂时是摆设，但留着不影响正确性，删了则要在清单重新按账号定制的那天
+  // 记得加回来——容易忘。
   // index.js 的 CORS 层还会再加一条 vary: origin，两条要在最终响应里都留着
   // （见 index.js 里合并响应头那段），这里只管自己该声明的那一条。
   res.headers.set('vary', 'authorization');

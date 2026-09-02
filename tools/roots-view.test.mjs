@@ -63,6 +63,33 @@ test('title 有了但 meta 为 null（subtitle/count 缺席）时不崩、不猜
   assert.doesNotMatch(root.innerHTML, /个词根/); // 顶部总数也该省略，不是显示 0 个词根
 });
 
+// 11.5：词根包列表也要挂锁——tier 从清单摊平回来（见 app.js rootList 分支），
+// 判定跟 packs.js 用同一个 needsUnlock，锁标复用同一个 pack-lock 类
+// （renderRootList 本来就在借 packs 那套 .pack-card/.pack-no 样式）。
+test('paid 且账号看不了付费内容的词根包带锁标', () => {
+  const root = fakeRoot();
+  renderRootList(root, [{ id: 'root-01', title: '身体部位', tier: 'paid' }], {
+    open() {}, back() {},
+  });
+  assert.match(root.innerHTML, /pack-lock/);
+});
+
+test('free 词根包不带锁标', () => {
+  const root = fakeRoot();
+  renderRootList(root, [{ id: 'root-01', title: '身体部位', tier: 'free' }], {
+    open() {}, back() {},
+  });
+  assert.doesNotMatch(root.innerHTML, /pack-lock/);
+});
+
+test('paid 词根包但账号 active：不带锁标', () => {
+  const root = fakeRoot();
+  renderRootList(root, [{ id: 'root-01', title: '身体部位', tier: 'paid' }], {
+    open() {}, back() {}, account: { status: 'active', trialEndsAt: null },
+  });
+  assert.doesNotMatch(root.innerHTML, /pack-lock/);
+});
+
 test('点开卡片按 id 而不是下标（rootId 现在按 id 取单元）', () => {
   const clicked = [];
   const root = {

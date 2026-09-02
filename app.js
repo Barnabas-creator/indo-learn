@@ -18,6 +18,7 @@ import { normalizeEmail, trialDaysLeft } from './lib/remote-provider.js';
 import { LEVELS, PACKS } from './lib/catalog.js';
 import {
   packsWithStatus, levelCountsFrom, refreshContentIndex, resetNavState, isSessionError,
+  needsUnlock, categoryLocked,
 } from './lib/catalog-view.js';
 import { parentView } from './lib/nav.js';
 
@@ -424,6 +425,11 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
   }
 
   function render() {
+    // 11.5：清单现在对谁都一样（付费单元也在里面），「点不点得进详情」要靠这个
+    // 账号快照自己判——每次 render() 都重新拼一份，账号状态是外层闭包变量，
+    // 登录/登出/试用到期都会改它，这里不能只拼一次缓存住。
+    const account = { status: accountStatus, trialEndsAt: accountTrialEndsAt };
+
     if (view === 'home') {
       return mount((m) =>
         renderHome(m, {
@@ -457,7 +463,14 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
           levelTitle: meta.title,
           packs,
           back: goBack,
-          open: (i) => { packId = packs[i].id; goTo('cards'); },
+          account,
+          // 锁住的包（tier paid 且账号看不了）直接跳登录，不进词卡页再等
+          // provider 抛 401——那样多一次请求、多一次闪烁（guard() 那条兜底
+          // 路径还留着，防的是清单和实际权限一时对不上这种边界情况）。
+          open: (i) => {
+            if (needsUnlock(packs[i], account)) return showLogin();
+            packId = packs[i].id; goTo('cards');
+          },
         }),
       );
     }
@@ -502,15 +515,29 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
       // 条数从清单摊平：对话数是 modules.dialogs 条目的个数，听力数是
       // modules.listening 那个唯一单元（unitId 恒为 'all'，见 tools/content-units.mjs
       // 的 whole 型）的 meta.count。清单已经在内存里，不用为了这两个数字多发请求。
+      const dialogsUnits = contentIndex.modules.dialogs ?? [];
+      const listeningUnits = contentIndex.modules.listening ?? [];
       const counts = {
         dialogs: contentIndex.modules.dialogs?.length ?? null,
-        listening: contentIndex.modules.listening?.[0]?.meta?.count ?? null,
+        listening: listeningUnits[0]?.meta?.count ?? null,
+      };
+      // 分类卡挂锁：对话是一堆各自定价的单元，「整类锁住」只在每一条都要登录时
+      // 才成立（categoryLocked 的口径，见 catalog-view.js）；听力只有一个单元，
+      // 天然退化成单条判定。用同一份 units 数组算 counts 和 locked，不会跟
+      // dialogList/listenList 里各自的判定跑偏。
+      const locked = {
+        dialogs: categoryLocked(dialogsUnits, account),
+        listening: categoryLocked(listeningUnits, account),
       };
       return mount((m) =>
         renderAudioCats(m, {
           counts,
+          locked,
           back: goBack,
-          open: (id) => goTo(id === 'dialogs' ? 'dialogList' : 'listenList'),
+          open: (id) => {
+            if (locked[id]) return showLogin();
+            goTo(id === 'dialogs' ? 'dialogList' : 'listenList');
+          },
         }),
       );
     }
@@ -539,13 +566,19 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
       // 列表页只用清单（已在内存里），不用等网络。scene/rounds 从 meta 摊平；
       // meta 可能是 null（坏数据兜底、新模块没给 meta），摊平时就近兜成 null，
       // 视图那边看到 null 会自己省略，不会崩、不会画出 undefined。
+      // tier 带出来给视图挂锁、给 open 回调判要不要跳登录——两处用同一份
+      // items，不会跟视图里画的锁和这里点击时的判断跑偏。
       const items = (contentIndex.modules.dialogs ?? []).map((u) => ({
-        id: u.id, sceneZh: u.title, scene: u.meta?.scene ?? null, rounds: u.meta?.rounds ?? null,
+        id: u.id, sceneZh: u.title, scene: u.meta?.scene ?? null, rounds: u.meta?.rounds ?? null, tier: u.tier,
       }));
       return mount((m) =>
         renderDialogList(m, items, {
           back: goBack,
-          open: (id) => { detailId = id; goTo('dialogDetail'); },
+          account,
+          open: (id) => {
+            if (needsUnlock(items.find((x) => x.id === id), account)) return showLogin();
+            detailId = id; goTo('dialogDetail');
+          },
         }),
       );
     }
@@ -559,13 +592,18 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     if (view === 'rootList') {
       // subtitle/count 从 meta 摊平；meta 可能是 null（坏数据兜底、新模块没给
       // meta），摊平时就近兜成 null，视图那边看到 null 会自己省略，不猜词数。
+      // tier 带出来给视图挂锁、给 open 回调判要不要跳登录。
       const items = (contentIndex.modules.roots ?? []).map((u) => ({
-        id: u.id, title: u.title, subtitle: u.meta?.subtitle ?? null, count: u.meta?.count ?? null,
+        id: u.id, title: u.title, subtitle: u.meta?.subtitle ?? null, count: u.meta?.count ?? null, tier: u.tier,
       }));
       return mount((m) =>
         renderRootList(m, items, {
           back: goBack,
-          open: (id) => { rootId = id; goTo('rootCards'); },
+          account,
+          open: (id) => {
+            if (needsUnlock(items.find((x) => x.id === id), account)) return showLogin();
+            rootId = id; goTo('rootCards');
+          },
         }),
       );
     }
@@ -606,6 +644,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     if (view === 'grammarList') {
       // number/subtitle/visual/lessons 从 meta 摊平；meta 可能是 null（坏数据
       // 兜底、新模块没给 meta），摊平时就近兜成 null，视图那边看到 null 会自己省略。
+      // tier 带出来给视图挂锁、给 open 回调判要不要跳登录。
       const items = (contentIndex.modules.grammar ?? []).map((u) => ({
         id: u.id,
         title: u.title,
@@ -613,11 +652,16 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
         subtitle: u.meta?.subtitle ?? null,
         visual: u.meta?.visual ?? null,
         lessons: u.meta?.lessons ?? null,
+        tier: u.tier,
       }));
       return mount((m) =>
         renderGrammarList(m, items, {
           back: goBack,
-          open: (id) => { detailId = id; goTo('grammarModule'); },
+          account,
+          open: (id) => {
+            if (needsUnlock(items.find((x) => x.id === id), account)) return showLogin();
+            detailId = id; goTo('grammarModule');
+          },
         }),
       );
     }
@@ -626,7 +670,8 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
       // titleZh 是清单条目自己的 title（正文 titleZh）；number/title(印尼语原名)/
       // goal/level/lessons 从 meta 摊平。meta 可能是 null（坏数据兜底、新模块没给
       // meta），摊平时就近兜成 null，视图那边看到 null 会自己省略，level 缺了按
-      // A1 分组（跟 Task 10 之前的默认值一致）。
+      // A1 分组（跟 Task 10 之前的默认值一致）。tier 带出来给视图挂锁、给 open
+      // 回调判要不要跳登录。
       const items = (contentIndex.modules.course ?? []).map((u) => ({
         id: u.id,
         titleZh: u.title,
@@ -635,11 +680,16 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
         goal: u.meta?.goal ?? null,
         level: u.meta?.level ?? null,
         lessons: u.meta?.lessons ?? null,
+        tier: u.tier,
       }));
       return mount((m) =>
         renderCourseUnits(m, items, {
           back: goBack,
-          open: (id) => { detailId = id; goTo('courseLessons'); },
+          account,
+          open: (id) => {
+            if (needsUnlock(items.find((x) => x.id === id), account)) return showLogin();
+            detailId = id; goTo('courseLessons');
+          },
         }),
       );
     }
@@ -741,10 +791,11 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
         // 免费层那种「压根没登录过」混在一起悄悄退成匿名访客。
         const reason = provider.lastRevokeReason ? provider.lastRevokeReason() : null;
         if (reason === 'trial_expired') return showLogin(AUTH_ERRORS.trial_expired);
-        // 免费层：没登录过、或注册了还没输激活码（pending），都不拦——直接进主界面，
-        // 清单里自然只有 free 单元（服务端 /content/index 对这两种账号一样按
-        // free-only 返回，见 server/src/content.js 的 canSeePaid）。点到付费内容时
-        // guard() 会把人送去登录页。
+        // 免费层：没登录过、或注册了还没输激活码（pending），都不拦——直接进主界面。
+        // 11.5 起清单对谁都一样（付费单元的元数据也在里面，只是挂了锁，见
+        // server/src/content.js 的 handleContentIndex），点到锁住的内容时，各列表页
+        // 的 open 回调会先判 needsUnlock/categoryLocked 直接送去登录页；guard() 那条
+        // 兜底路径还留着，防的是清单和服务端实际权限一时对不上这种边界情况。
       }
       await loadPacksAfterUnlock();
     } catch (err) {
