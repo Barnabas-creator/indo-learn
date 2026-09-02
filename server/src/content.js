@@ -10,12 +10,17 @@ import { requireAccount, json } from './routes.js';
 // 查一次库，404 更快也更干净。
 const MODULES = new Set(['packs', 'roots', 'dialogs', 'grammar', 'course', 'listening']);
 
-// 全站单元约 250 个。正常人一天翻不到 400 个，扒全集要连着两天且留痕；
-// 匿名只能看 free 那几个，60 次足够试吃。
+// 全站单元约 250 个。正常人一天翻不到 400 个，扒全集要连着两天且留痕。
 // 这是计数不是配额：拦不住内容最终要送进浏览器，只把「一次性导出全集」
 // 变成看得见、拖得慢的事。
+//
+// 12.5 拍板：匿名请求不计数、不限流。匿名从这条路由只够拿到 free 那 12 个
+// 免费单元（tier='free'）的正文，扒不到任何值钱的东西，限它没有收益；
+// 而按 IP 计数在印尼是有害的——本地大量手机用户走运营商 CGNAT，成百上千人
+// 共用一个出口 IP，会共享同一份配额，新用户第一次打开就可能被前面的人
+// 挤到 429。账号那档不受影响：只要认出账号，就按账号计数、按
+// ACCOUNT_DAILY_LIMIT 限，跟匿名与否无关。
 export const ACCOUNT_DAILY_LIMIT = 400;
-export const ANON_DAILY_LIMIT = 60;
 
 export const dayKey = (now) => new Date(now).toISOString().slice(0, 10);
 
@@ -96,25 +101,30 @@ export async function handleContentUnit(request, env, now = Date.now()) {
 
   // 计数放在「取到单元、判完权限」之后：不存在的单元、没权限的请求都不消耗
   // 额度，只数真的换到内容正文这一刻。
+  //
+  // 只有认出账号才计数、才限流——匿名请求完全不摸计数器：拿不到付费正文的
+  // 请求没什么好拦的，而按 IP 计数在印尼会误伤 CGNAT 后面的一大片真实用户
+  // （见上面 ACCOUNT_DAILY_LIMIT 那段注释）。
   const accountId = account?.id;
-  const subject = accountId ? `acct:${accountId}` : `ip:${request.headers.get('cf-connecting-ip') ?? '?'}`;
-  const limit = accountId ? ACCOUNT_DAILY_LIMIT : ANON_DAILY_LIMIT;
-  // fail open：限流是抬高「一次性导出全集」的成本，不是安全边界——真正兜底权限
-  // 的是上面那段判定。content_hits 写不进去（D1 抖动）不该把一次本该放行的
-  // 正常请求变成用户可见的 500，所以计数失败当作「这次不计数」处理，直接放行，
-  // 跟 index.js 里 recordError 失败「记不下去就算了」是同一条原则。
-  let hits = 0;
-  try {
-    hits = await bumpContentHits(env.DB, { subject, day: dayKey(now) });
-  } catch (err) {
-    console.error('bumpContentHits failed, failing open', err);
-  }
-  if (hits > limit) {
-    // 「有人在扒」是个信号，不是普通错误——记下来，好在 error_log 里查到。
-    await recordError(env.DB, {
-      ts: now, method: 'GET', path: pathname, name: 'rate_limited', message: subject,
-    });
-    return json({ error: 'rate_limited' }, 429);
+  if (accountId) {
+    const subject = `acct:${accountId}`;
+    // fail open：限流是抬高「一次性导出全集」的成本，不是安全边界——真正兜底
+    // 权限的是上面那段判定。content_hits 写不进去（D1 抖动）不该把一次本该
+    // 放行的正常请求变成用户可见的 500，所以计数失败当作「这次不计数」处理，
+    // 直接放行，跟 index.js 里 recordError 失败「记不下去就算了」是同一条原则。
+    let hits = 0;
+    try {
+      hits = await bumpContentHits(env.DB, { subject, day: dayKey(now) });
+    } catch (err) {
+      console.error('bumpContentHits failed, failing open', err);
+    }
+    if (hits > ACCOUNT_DAILY_LIMIT) {
+      // 「有人在扒」是个信号，不是普通错误——记下来，好在 error_log 里查到。
+      await recordError(env.DB, {
+        ts: now, method: 'GET', path: pathname, name: 'rate_limited', message: subject,
+      });
+      return json({ error: 'rate_limited' }, 429);
+    }
   }
 
   return json({ version: row.version, body: JSON.parse(row.body) });

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  handleContentIndex, handleContentUnit, ACCOUNT_DAILY_LIMIT, ANON_DAILY_LIMIT, dayKey,
+  handleContentIndex, handleContentUnit, ACCOUNT_DAILY_LIMIT, dayKey,
 } from './content.js';
 import { signToken } from './crypto.js';
 
@@ -306,59 +306,50 @@ test('日期键按 UTC 取到天', () => {
   assert.equal(dayKey(Date.UTC(2026, 7, 31, 23, 59)), '2026-08-31');
 });
 
-test('匿名超过上限返回 429', async () => {
-  const counter = { n: ANON_DAILY_LIMIT }; // 下一次就是第 61 次
-  const env = { DB: countingDb(ROWS, [], counter), SESSION_SECRET: SECRET };
-  const res = await handleContentUnit(unitReq('/content/packs/p-1'), env, 1000);
-  assert.equal(res.status, 429);
-  assert.equal((await res.json()).error, 'rate_limited');
-});
-
-test('匿名第 60 次仍然放行', async () => {
-  const counter = { n: ANON_DAILY_LIMIT - 2 };
+// 12.5 拍板：匿名从 GET /content/:module/:id 只够看到 free 那 12 个免费单元，
+// 没有值得扒的东西——限它没有收益，反而会误伤共用同一出口 IP 的
+// CGNAT 用户（印尼手机网络常见）。所以匿名请求完全不计数、不限流，
+// 不管计数器当前值多大，一律放行。
+test('匿名请求不管计数器多大都不该 429，完全不受限流影响', async () => {
+  const counter = { n: ACCOUNT_DAILY_LIMIT + 1000 }; // 就算按账号上限算也早超了
   const env = { DB: countingDb(ROWS, [], counter), SESSION_SECRET: SECRET };
   const res = await handleContentUnit(unitReq('/content/packs/p-1'), env, 1000);
   assert.equal(res.status, 200);
 });
 
-// 上限边界要卡到「恰好」，不能只在附近估算：下一次正好是第 60 次时必须放行，
-// 再下一次（第 61 次）才该被拦。
-test('恰好命中上限（第 60 次）放行', async () => {
-  const counter = { n: ANON_DAILY_LIMIT - 1 };
-  const env = { DB: countingDb(ROWS, [], counter), SESSION_SECRET: SECRET };
+// 匿名请求不该碰计数器——不只是「不被拦」，是根本不写这条 SQL。
+// 用假 DB 断言 INSERT INTO content_hits 那条 SQL 没被调用过。
+test('匿名请求不会触发 bumpContentHits', async () => {
+  const counter = { n: 0 };
+  const log = { hits: [], errors: [] };
+  const env = { DB: countingDb(ROWS, [], counter, log), SESSION_SECRET: SECRET };
   const res = await handleContentUnit(unitReq('/content/packs/p-1'), env, 1000);
   assert.equal(res.status, 200);
-  assert.equal(counter.n, ANON_DAILY_LIMIT);
+  assert.equal(counter.n, 0);
+  assert.deepEqual(log.hits, []);
 });
 
-test('超出上限恰好一次（第 61 次）就是 429', async () => {
-  const counter = { n: ANON_DAILY_LIMIT };
-  const env = { DB: countingDb(ROWS, [], counter), SESSION_SECRET: SECRET };
-  const res = await handleContentUnit(unitReq('/content/packs/p-1'), env, 1000);
-  assert.equal(res.status, 429);
-  assert.equal(counter.n, ANON_DAILY_LIMIT + 1);
-});
-
-test('账号上限比匿名宽', async () => {
-  assert.ok(ACCOUNT_DAILY_LIMIT > ANON_DAILY_LIMIT);
+// 上限边界要卡到「恰好」，不能只在附近估算：账号第 400 次必须放行，
+// 第 401 次才该被拦。
+test('账号恰好命中上限（第 400 次）放行', async () => {
   const accounts = [{ id: 1, status: 'active', trial_ends_at: null }];
-  const counter = { n: ANON_DAILY_LIMIT + 10 };
+  const counter = { n: ACCOUNT_DAILY_LIMIT - 1 };
   const env = { DB: countingDb(ROWS, accounts, counter), SESSION_SECRET: SECRET };
   const token = await signToken(1, SECRET, 1000);
   const res = await handleContentUnit(unitReq('/content/packs/p-2', token), env, 1000);
   assert.equal(res.status, 200);
+  assert.equal(counter.n, ACCOUNT_DAILY_LIMIT);
 });
 
-// 计数主体要能分清「谁在扒」：匿名按 IP 前缀，登录账号按账号前缀，
-// 不能让带 token 的请求悄悄并进 IP 那一档、或反过来把匿名算进别人的账号额度。
-test('匿名请求按 ip: 前缀计数，不是按账号', async () => {
-  const counter = { n: 0 };
-  const log = { hits: [], errors: [] };
-  const env = { DB: countingDb(ROWS, [], counter, log), SESSION_SECRET: SECRET };
-  await handleContentUnit(unitReq('/content/packs/p-1'), env, 1000);
-  assert.equal(log.hits.length, 1);
-  assert.equal(log.hits[0][0], 'ip:1.1.1.1');
-  assert.equal(log.hits[0][1], dayKey(1000));
+test('账号超出上限恰好一次（第 401 次）就是 429', async () => {
+  const accounts = [{ id: 1, status: 'active', trial_ends_at: null }];
+  const counter = { n: ACCOUNT_DAILY_LIMIT };
+  const env = { DB: countingDb(ROWS, accounts, counter), SESSION_SECRET: SECRET };
+  const token = await signToken(1, SECRET, 1000);
+  const res = await handleContentUnit(unitReq('/content/packs/p-2', token), env, 1000);
+  assert.equal(res.status, 429);
+  assert.equal((await res.json()).error, 'rate_limited');
+  assert.equal(counter.n, ACCOUNT_DAILY_LIMIT + 1);
 });
 
 test('登录账号请求按 acct: 前缀计数，不按 IP', async () => {
@@ -385,22 +376,26 @@ test('free 单元带有效 token 也按账号计数', async () => {
 });
 
 // 超限那一刻要落 error_log，不然「谁在扒」这件事在生产环境里就无从查起。
-test('超限时把 subject 写进 error_log', async () => {
-  const counter = { n: ANON_DAILY_LIMIT };
+// 匿名不再计数、也就不再有匿名超限这回事，这条只剩账号路径要测。
+test('账号超限时把 subject 写进 error_log', async () => {
+  const accounts = [{ id: 1, status: 'active', trial_ends_at: null }];
+  const counter = { n: ACCOUNT_DAILY_LIMIT };
   const log = { hits: [], errors: [] };
-  const env = { DB: countingDb(ROWS, [], counter, log), SESSION_SECRET: SECRET };
-  const res = await handleContentUnit(unitReq('/content/packs/p-1'), env, 1000);
+  const env = { DB: countingDb(ROWS, accounts, counter, log), SESSION_SECRET: SECRET };
+  const token = await signToken(1, SECRET, 1000);
+  const res = await handleContentUnit(unitReq('/content/packs/p-2', token), env, 1000);
   assert.equal(res.status, 429);
   assert.equal(log.errors.length, 1);
   const [ts, method, path, name, message] = log.errors[0];
   assert.equal(ts, 1000);
   assert.equal(method, 'GET');
-  assert.equal(path, '/content/packs/p-1');
+  assert.equal(path, '/content/packs/p-2');
   assert.equal(name, 'rate_limited');
-  assert.equal(message, 'ip:1.1.1.1');
+  assert.equal(message, 'acct:1');
 });
 
-// 放行的请求不该往 error_log 里写垃圾。
+// 放行的请求不该往 error_log 里写垃圾——匿名请求本就不摸计数器，
+// 账号请求未超限时也一样。
 test('未超限时不写 error_log', async () => {
   const counter = { n: 0 };
   const log = { hits: [], errors: [] };
@@ -434,6 +429,7 @@ test('没权限被拒的请求不消耗计数额度', async () => {
 
 // 计数写失败要 fail open：D1 抖动不该把一次本该放行的正常请求变成用户可见的
 // 500——bumpContentHits 抛异常时，请求仍要拿到 200 和正确的正文。
+// 匿名请求已经完全不摸计数器了，这条要用账号请求才测得到 fail open 这条路径。
 function throwingHitsDb(rows, accounts = []) {
   return {
     prepare(sql) {
@@ -458,8 +454,10 @@ function throwingHitsDb(rows, accounts = []) {
 }
 
 test('计数写失败时 fail open：请求仍返回 200 和正确正文', async () => {
-  const env = { DB: throwingHitsDb(ROWS), SESSION_SECRET: SECRET };
-  const res = await handleContentUnit(unitReq('/content/packs/p-1'), env, 1000);
+  const accounts = [{ id: 1, status: 'active', trial_ends_at: null }];
+  const env = { DB: throwingHitsDb(ROWS, accounts), SESSION_SECRET: SECRET };
+  const token = await signToken(1, SECRET, 1000);
+  const res = await handleContentUnit(unitReq('/content/packs/p-1', token), env, 1000);
   assert.equal(res.status, 200);
   assert.deepEqual((await res.json()).body, [{ w: 'satu' }]);
 });
