@@ -93,3 +93,49 @@ export async function recordError(db, {
     .bind(ts, method, path, name, message)
     .run();
 }
+
+// 清单出 id / tier / title / meta，不带 body——正文一次只发一个单元，是这次改造的重点。
+// meta 存的是 JSON 字符串，这里原样透出，解析成对象是路由层 handleContentIndex 的事
+// （一行坏 JSON 不该由查询函数决定要不要往外抛错）。
+// 11.5：清单对所有人一样，一律出全部单元的元数据——「谁能看正文」由
+// GET /content/:module/:id 按账号鉴权把关，这里不再按 tier 过滤，也就不再需要
+// includePaid 这个参数了（旧调用方全部换掉了，见 content.js handleContentIndex）。
+export async function listContentUnits(db) {
+  const res = await db
+    .prepare('SELECT module, unit_id, tier, title, meta FROM content ORDER BY module, unit_id')
+    .all();
+  return res.results ?? [];
+}
+
+export function getContentUnit(db, module, unitId) {
+  return db
+    .prepare('SELECT tier, version, body FROM content WHERE module = ? AND unit_id = ?')
+    .bind(module, unitId)
+    .first();
+}
+
+export async function currentContentVersion(db) {
+  const row = await db.prepare('SELECT version FROM content_meta WHERE id = 1').first();
+  return row?.version ?? null;
+}
+
+// 计数与读取分成两句：D1 的 RETURNING 能一次拿到自增后的值，
+// 省掉「先读再写」中间那段并发窗口。
+export async function bumpContentHits(db, { subject, day }) {
+  const row = await db
+    .prepare(
+      'INSERT INTO content_hits (subject, day, n) VALUES (?, ?, 1) '
+      + 'ON CONFLICT (subject, day) DO UPDATE SET n = n + 1 RETURNING n',
+    )
+    .bind(subject, day)
+    .first();
+  return row?.n ?? 1;
+}
+
+export async function countContentHits(db, { subject, day }) {
+  const row = await db
+    .prepare('SELECT n FROM content_hits WHERE subject = ? AND day = ?')
+    .bind(subject, day)
+    .first();
+  return row?.n ?? 0;
+}

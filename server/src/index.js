@@ -2,6 +2,7 @@
 import {
   handleRegister, handleLogin, handleActivate, handleContentKey, handleRequestCode, json,
 } from './routes.js';
+import { handleContentIndex, handleContentUnit } from './content.js';
 import { recordError } from './db.js';
 
 // ALLOWED_ORIGIN 是逗号分隔的白名单：站点同时挂在 github.io 和 pages.dev 两个域名上，
@@ -26,6 +27,7 @@ const ROUTES = {
   'POST /activate': handleActivate,
   'POST /request-code': handleRequestCode,
   'GET /content-key': handleContentKey,
+  'GET /content/index': handleContentIndex,
 };
 
 export default {
@@ -37,7 +39,10 @@ export default {
 
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, '') || '/';
-    const handler = ROUTES[`${request.method} ${path}`];
+    // /content/index 在 ROUTES 里精确命中，查表在前缀判断之前，不会被下面这条截走。
+    // 只加这一条前缀规则，是因为动态路径目前只有这一条——真多起来了再上正则路由表。
+    const handler = ROUTES[`${request.method} ${path}`]
+      ?? (request.method === 'GET' && path.startsWith('/content/') ? handleContentUnit : undefined);
 
     let res;
     if (!handler) {
@@ -62,7 +67,18 @@ export default {
       }
     }
     const headers = new Headers(res.headers);
-    for (const [k, v] of Object.entries(cors)) headers.set(k, v);
+    for (const [k, v] of Object.entries(cors)) {
+      // vary 不能直接 set 覆盖：handler 自己可能已经声明了 vary（比如
+      // /content/index 因为内容随 authorization 变化而加的 vary: authorization），
+      // 这里的 vary: origin 是 CORS 层另一条必须的声明，两条都要保留，缺一条
+      // 都会让对应的缓存判断失效。
+      if (k === 'vary' && headers.has('vary')) {
+        const existing = headers.get('vary').split(',').map((s) => s.trim()).filter(Boolean);
+        if (!existing.includes(v)) headers.set('vary', [...existing, v].join(', '));
+      } else {
+        headers.set(k, v);
+      }
+    }
     return new Response(res.body, { status: res.status, headers });
   },
 };

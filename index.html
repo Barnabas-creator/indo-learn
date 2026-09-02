@@ -19,9 +19,9 @@
 </footer>
 
 <script type="module">
-  import { AUTH_MODE, API_BASE } from './lib/config.js';
-  import { createProvider } from './lib/provider.js';
-  import { createRemoteProvider } from './lib/remote-provider.js';
+  import { API_BASE } from './lib/config.js';
+  import { createServerProvider } from './lib/server-provider.js';
+  import { createUnitCache } from './lib/idb-cache.js';
   import { createTts } from './lib/tts.js';
   import { start } from './app.js';
 
@@ -46,9 +46,7 @@
     return data;
   };
 
-  const provider = AUTH_MODE === 'remote'
-    ? createRemoteProvider({ fetchJson, apiFetch, storage: localStorage })
-    : createProvider({ fetchJson, storage: localStorage });
+  const provider = createServerProvider({ apiFetch, storage: localStorage, cache: createUnitCache() });
 
   const tts = createTts({
     synth: window.speechSynthesis,

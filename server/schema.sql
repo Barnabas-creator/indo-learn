@@ -39,3 +39,27 @@ CREATE TABLE IF NOT EXISTS error_log (
   name TEXT,
   message TEXT
 );
+
+CREATE TABLE IF NOT EXISTS content (
+  module   TEXT NOT NULL,
+  unit_id  TEXT NOT NULL,
+  tier     TEXT NOT NULL,
+  version  TEXT NOT NULL,
+  title    TEXT,
+  meta     TEXT,
+  body     TEXT NOT NULL,
+  PRIMARY KEY (module, unit_id)
+);
+
+CREATE TABLE IF NOT EXISTS content_meta (
+  id       INTEGER PRIMARY KEY CHECK (id = 1),
+  version  TEXT NOT NULL,
+  built_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS content_hits (
+  subject TEXT NOT NULL,
+  day     TEXT NOT NULL,
+  n       INTEGER NOT NULL,
+  PRIMARY KEY (subject, day)
+);

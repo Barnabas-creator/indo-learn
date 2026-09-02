@@ -4,6 +4,7 @@ import {
   createAccount, findAccountByEmail, findAccountById, setAccountStatus,
   insertCode, findCode, bindCode, currentContentKey,
   countAttempts, recordAttempt, recordError, expireCodesOfAccount,
+  listContentUnits, getContentUnit, currentContentVersion, bumpContentHits, countContentHits,
 } from './db.js';
 
 // 假 D1：记录收到的 SQL 与参数，按预设结果返回
@@ -19,6 +20,7 @@ function fakeDb(results = []) {
         bind(...args) { call.args = args; return stmt; },
         async first() { return queue.length ? queue.shift() : null; },
         async run() { return { meta: { last_row_id: 7 } }; },
+        async all() { return { results: queue.length ? queue.shift() : [] }; },
       };
       return stmt;
     },
@@ -128,4 +130,60 @@ test('记一条错误日志', async () => {
   });
   assert.match(db.calls[0].sql, /INSERT INTO error_log/);
   assert.deepEqual(db.calls[0].args, [300, 'POST', '/register', 'TypeError', '坏了']);
+});
+
+// 11.5：清单对所有人一样，一律出全部单元——「谁能看」现在是前端按 tier
+// 挂锁的事，不再靠 SQL 按 tier 过滤。includePaid 这个开关因此没有 false 的
+// 调用方了，一并从签名里去掉，别留一个永远为 true 的参数让人误以为还能传别的。
+test('清单 SELECT 不按 tier 过滤，一律出全部单元', async () => {
+  const db = fakeDb();
+  await listContentUnits(db);
+  assert.doesNotMatch(db.calls[0].sql, /WHERE tier/);
+});
+
+// 10.5A：清单要把 meta 列也选出来，路由层才有东西可解析给前端。
+test('清单 SELECT 带上 meta 列', async () => {
+  const db = fakeDb();
+  await listContentUnits(db);
+  assert.match(db.calls[0].sql, /SELECT module, unit_id, tier, title, meta FROM content/);
+});
+
+test('清单返回查到的行，带 meta 原始字符串（路由层负责解析）', async () => {
+  const db = fakeDb([[{
+    module: 'packs', unit_id: 'u1', tier: 'free', title: 'T', meta: '{"count":1}',
+  }]]);
+  const rows = await listContentUnits(db);
+  assert.deepEqual(rows, [{
+    module: 'packs', unit_id: 'u1', tier: 'free', title: 'T', meta: '{"count":1}',
+  }]);
+});
+
+test('取单元按 module + unit_id 两个键', async () => {
+  const db = fakeDb([{ tier: 'paid', version: 'c1', body: '{"a":1}' }]);
+  const row = await getContentUnit(db, 'packs', 'freq-beginner-001');
+  assert.deepEqual(db.calls[0].args, ['packs', 'freq-beginner-001']);
+  assert.equal(row.version, 'c1');
+});
+
+test('取当前内容版本', async () => {
+  const db = fakeDb([{ version: 'c3' }]);
+  assert.equal(await currentContentVersion(db), 'c3');
+});
+
+test('取当前内容版本，没有行时为 null', async () => {
+  const db = fakeDb([null]);
+  assert.equal(await currentContentVersion(db), null);
+});
+
+test('当日计数自增后返回新值', async () => {
+  const db = fakeDb([{ n: 5 }]);
+  const n = await bumpContentHits(db, { subject: 'acct:1', day: '2026-08-31' });
+  assert.match(db.calls[0].sql, /ON CONFLICT/);
+  assert.deepEqual(db.calls[0].args, ['acct:1', '2026-08-31']);
+  assert.equal(n, 5);
+});
+
+test('查当日计数，没有行时算 0', async () => {
+  const db = fakeDb([null]);
+  assert.equal(await countContentHits(db, { subject: 'ip:1.1.1.1', day: '2026-08-31' }), 0);
 });
