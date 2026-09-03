@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupByUnit, mmss, renderAudioCats } from '../lib/views/listening.js';
+import {
+  groupByUnit, mmss, renderAudioCats, renderListenList,
+} from '../lib/views/listening.js';
 
 // 极小的手写假 DOM：够 render* 函数 innerHTML 赋值后调 querySelector(All) 绑事件即可，
 // 不引入 jsdom。断言只看渲染出来的 HTML 字符串。
@@ -16,13 +18,16 @@ test('时长显示成 分:秒', () => {
   assert.equal(mmss(undefined), '0:00');
 });
 
+// 听力从「整块一个 all 单元」改成「一段一个单元」后，清单摊平给列表页的每一
+// 条只剩 meta 里的 unitZh（没有单独的「课 id」字段了，见 tools/content-units.mjs
+// 的 listening 分支），分组直接按 unitZh 这个字符串本身，不再靠额外的 unit id。
 test('同一单元的几段归到一起，单元按首次出现排序', () => {
   const units = groupByUnit([
-    { id: 'a', unit: 'unit-01', unitZh: '第 1 课' },
-    { id: 'b', unit: 'unit-02', unitZh: '第 2 课' },
-    { id: 'c', unit: 'unit-01', unitZh: '第 1 课' },
+    { id: 'a', unitZh: '第 1 课' },
+    { id: 'b', unitZh: '第 2 课' },
+    { id: 'c', unitZh: '第 1 课' },
   ]);
-  assert.deepEqual(units.map((u) => u.id), ['unit-01', 'unit-02']);
+  assert.deepEqual(units.map((u) => u.title), ['第 1 课', '第 2 课']);
   assert.deepEqual(units[0].items.map((i) => i.id), ['a', 'c']);
 });
 
@@ -123,4 +128,34 @@ test('不传 locked 也不崩、不误判成锁住', () => {
     renderAudioCats(root, { counts: { dialogs: 5, listening: 9 }, open() {}, back() {} });
   });
   assert.doesNotMatch(root.innerHTML, /level-lock/);
+});
+
+// 听力按段切之后，renderListenList 收到的是清单摊平出来的清单项（{id, tier,
+// code, titleZh, unitZh, seconds}），不再是整段正文数组——正文（quiz/lines/
+// phrases 等）要点进某一段才现取。所以列表层不该再画「N 题」（题数是正文
+// 字段，清单里没有），也不该因为拿不到 quiz 而崩。
+test('renderListenList 按 meta.unitZh 分组，显示教材编号/标题/时长，不画题数', () => {
+  const root = fakeRoot();
+  const items = [
+    {
+      id: 'bipa-a1-01-1', tier: 'paid', code: 'Simakan 1.1', titleZh: '早上问好：Santi 与 Beni',
+      unitZh: '第 1 课　打招呼与问好', seconds: 23,
+    },
+    {
+      id: 'bipa-a1-02-1', tier: 'paid', code: 'Simakan 2.1', titleZh: '自我介绍：Anjini',
+      unitZh: '第 2 课　认识新朋友', seconds: 20,
+    },
+  ];
+  assert.doesNotThrow(() => {
+    renderListenList(root, items, { open() {}, back() {} });
+  });
+  assert.match(root.innerHTML, /第 1 课　打招呼与问好/);
+  assert.match(root.innerHTML, /第 2 课　认识新朋友/);
+  assert.match(root.innerHTML, /Simakan 1\.1/);
+  assert.match(root.innerHTML, /早上问好：Santi 与 Beni/);
+  assert.match(root.innerHTML, /0:23/);
+  // 页面固定文案里本来就有「做题」二字，这里排除的是列表项自己画出来的题数
+  // （旧版 "N 题" 那种数字+题的组合），不是把「题」字整体禁掉。
+  assert.doesNotMatch(root.innerHTML, /\d+\s*题/);
+  assert.doesNotMatch(root.innerHTML, /undefined/);
 });

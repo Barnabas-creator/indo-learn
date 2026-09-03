@@ -17,7 +17,10 @@ const content = {
   course: [{
     id: 'u01', number: 1, title: 'Salam', titleZh: '打招呼', goal: '学会问候', level: 'A1', lessons: [{ id: 'u01l1' }],
   }],
-  listening: [{ id: 'a', unit: 'unit-01' }],
+  listening: [{
+    id: 'bipa-a1-01-1', unit: 'unit-01', unitZh: '第 1 课　打招呼与问好', code: 'Simakan 1.1',
+    titleZh: '早上问好：Santi 与 Beni', seconds: 23, lines: [{ speaker: 'A', id_text: 'Halo', zh: '你好' }],
+  }],
 };
 
 test('每个词包一个单元，body 是词条数组', () => {
@@ -26,12 +29,12 @@ test('每个词包一个单元，body 是词条数组', () => {
   assert.deepEqual(p1.body, [{ id: 'w1', word: 'satu' }]);
 });
 
-test('listening 整块存成一个 all 单元', () => {
+test('listening 按段切，一段一个单元，unitId 是段自己的 id', () => {
   const units = splitIntoUnits(content, {});
   const l = units.filter((u) => u.module === 'listening');
   assert.equal(l.length, 1);
-  assert.equal(l[0].unitId, 'all');
-  assert.equal(l[0].body.length, 1);
+  assert.equal(l[0].unitId, 'bipa-a1-01-1');
+  assert.deepEqual(l[0].body, content.listening[0]);
 });
 
 test('语法与教材按模块切，课跟着模块走不单独成单元', () => {
@@ -54,11 +57,12 @@ test('清单里的 id 标成 free，其余 paid', () => {
   assert.equal(units.find((u) => u.module === 'listening').tier, 'paid');
 });
 
-test('标题：对话取 sceneZh、语法取 title、教材取 titleZh，词包留空', () => {
+test('标题：对话取 sceneZh、语法取 title、教材取 titleZh、听力取段自己的 titleZh，词包留空', () => {
   const units = splitIntoUnits(content, {});
   assert.equal(units.find((u) => u.module === 'dialogs').title, '打招呼');
   assert.equal(units.find((u) => u.module === 'grammar').title, '发音篇');
   assert.equal(units.find((u) => u.module === 'course').title, '打招呼');
+  assert.equal(units.find((u) => u.module === 'listening').title, '早上问好：Santi 与 Beni');
   assert.equal(units.find((u) => u.unitId === 'p-1').title, null);
 });
 
@@ -104,10 +108,13 @@ test('course 的 meta 带课数、印尼语原名（跟 titleZh 区分开）、g
   });
 });
 
-test('listening 的 meta.count 等于整个数组长度', () => {
+// 听力从「整块一个 all 单元」改成「一段一个单元」（33 段撑到 144.6KB，单条
+// INSERT 超了 D1 的 SQLITE_TOOBIG 上限）；列表页要按课分组、显示教材编号和
+// 时长，这三样以前在正文里，现在从 meta 摊平出来，不用为了分组/显示先取正文。
+test('listening 的 meta 带 unitZh/code/seconds，不带 lines 等正文字段', () => {
   const units = splitIntoUnits(content, {});
   const meta = units.find((u) => u.module === 'listening').meta;
-  assert.deepEqual(meta, { count: 1 });
+  assert.deepEqual(meta, { unitZh: '第 1 课　打招呼与问好', code: 'Simakan 1.1', seconds: 23 });
 });
 
 test('packs 的 meta 是 null——标题骨架都在 lib/catalog.js 里，清单不重复', () => {
@@ -174,7 +181,23 @@ test('packs：词条数组为空的包不进清单', () => {
   assert.deepEqual(ids.sort(), ['p-1', 'p-2']);
 });
 
-test('listening：整个数组为空时一个单元都不进清单（不是进去了显示 0 段）', () => {
+test('listening：lines 为空数组的段不进清单，其余段照常进', () => {
+  const withPlaceholder = {
+    ...content,
+    listening: [
+      ...content.listening,
+      {
+        id: 'bipa-a1-01-2', unit: 'unit-01', unitZh: '第 1 课　打招呼与问好', code: 'Simakan 1.2',
+        titleZh: '占位段', seconds: 0, lines: [],
+      },
+    ],
+  };
+  const units = splitIntoUnits(withPlaceholder, {});
+  const ids = units.filter((u) => u.module === 'listening').map((u) => u.unitId);
+  assert.deepEqual(ids, ['bipa-a1-01-1']);
+});
+
+test('listening：整个数组为空时一个单元都不进清单', () => {
   const emptied = { ...content, listening: [] };
   const units = splitIntoUnits(emptied, {});
   assert.deepEqual(units.filter((u) => u.module === 'listening'), []);

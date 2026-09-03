@@ -513,18 +513,19 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
 
     if (view === 'audioCats') {
       // 条数从清单摊平：对话数是 modules.dialogs 条目的个数，听力数是
-      // modules.listening 那个唯一单元（unitId 恒为 'all'，见 tools/content-units.mjs
-      // 的 whole 型）的 meta.count。清单已经在内存里，不用为了这两个数字多发请求。
+      // modules.listening 的条目个数（听力从「整块一个 all 单元」改成「一段
+      // 一个单元」，见 tools/content-units.mjs——33 段撑到 144.6KB 超了 D1
+      // 单条 INSERT 的上限）。清单已经在内存里，不用为了这两个数字多发请求。
       const dialogsUnits = contentIndex.modules.dialogs ?? [];
       const listeningUnits = contentIndex.modules.listening ?? [];
       const counts = {
         dialogs: contentIndex.modules.dialogs?.length ?? null,
-        listening: listeningUnits[0]?.meta?.count ?? null,
+        listening: contentIndex.modules.listening?.length ?? null,
       };
-      // 分类卡挂锁：对话是一堆各自定价的单元，「整类锁住」只在每一条都要登录时
-      // 才成立（categoryLocked 的口径，见 catalog-view.js）；听力只有一个单元，
-      // 天然退化成单条判定。用同一份 units 数组算 counts 和 locked，不会跟
-      // dialogList/listenList 里各自的判定跑偏。
+      // 分类卡挂锁：对话、听力现在都是一堆各自定价的单元，「整类锁住」只在
+      // 每一条都要登录时才成立（categoryLocked 的口径，见 catalog-view.js）。
+      // 用同一份 units 数组算 counts 和 locked，不会跟 dialogList/listenList
+      // 里各自的判定跑偏。
       const locked = {
         dialogs: categoryLocked(dialogsUnits, account),
         listening: categoryLocked(listeningUnits, account),
@@ -543,22 +544,31 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     }
 
     if (view === 'listenList') {
-      // 听力整块只有一个单元（id 固定 'all'），列表和详情共用同一次取。
-      return guard(provider.getUnit('listening', 'all'), (items) =>
-        mount((m) =>
-          renderListenList(m, items, {
-            back: goBack,
-            open: (id) => { detailId = id; goTo('listenDetail'); },
-          }),
-        ),
+      // 列表页只用清单（已在内存里），不用等网络。unitZh/code/seconds 从 meta
+      // 摊平——正文（quiz/lines/phrases/vocab/tips）要点开某一段才现取一次。
+      // tier 带出来给视图挂锁、给 open 回调判要不要跳登录，跟 dialogList 同一
+      // 个套路（对话和听力现在都是「一堆各自定价的单元」，不再是听力单独一个
+      // 整块单元的特例）。
+      const items = (contentIndex.modules.listening ?? []).map((u) => ({
+        id: u.id, tier: u.tier, code: u.meta?.code ?? null, titleZh: u.title, unitZh: u.meta?.unitZh ?? null,
+        seconds: u.meta?.seconds ?? null,
+      }));
+      return mount((m) =>
+        renderListenList(m, items, {
+          back: goBack,
+          open: (id) => {
+            if (needsUnlock(items.find((x) => x.id === id), account)) return showLogin();
+            detailId = id; goTo('listenDetail');
+          },
+        }),
       );
     }
 
     if (view === 'listenDetail') {
-      return guard(provider.getUnit('listening', 'all'), (items) =>
-        mount((m) =>
-          renderListen(m, items.find((x) => x.id === detailId), { tts, back: goBack }),
-        ),
+      // 每段现在是清单里独立的一个单元，detailId 就是段自己的 id——
+      // 直接按 id 取这一段的正文，不再需要先取整块数组再 find。
+      return guard(provider.getUnit('listening', detailId), (item) =>
+        mount((m) => renderListen(m, item, { tts, back: goBack })),
       );
     }
 

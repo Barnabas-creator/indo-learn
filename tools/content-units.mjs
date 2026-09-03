@@ -1,7 +1,8 @@
 // 把六个模块的内容切成「用户一次点开要看的东西」。
 //
 // 粒度不按文件现在怎么存定：语法一个模块 38KB，切到课一级只是让翻课时多几十个
-// 请求，防拷贝上也没多挡什么。listening 整块才 12KB，切了没意义。
+// 请求，防拷贝上也没多挡什么。listening 按段切是例外——不是图请求数好看，是
+// 整块撑到 144.6KB 会超 D1 单条 INSERT 的上限（见下面 listening 那条注释）。
 //
 // 词包和词根包的标题留空——它们在 lib/catalog.js 里已经是明文，清单不必重复一遍。
 
@@ -18,7 +19,7 @@
 // 有没有这个 id」重新成为「开放与否」唯一可靠的依据，词包那套
 // packsWithStatus「有就是开放、没有就是准备中」的语义对所有模块统一了。
 // 判定按各模块的实际形状来：course/grammar 看 lessons，roots 看 words，
-// dialogs 看 lines，packs 看词条数组本身，listening 看整个数组。
+// dialogs 看 lines，packs 看词条数组本身，listening 看每一段自己的 lines。
 const SHAPES = {
   packs: { kind: 'map', title: () => null, meta: () => null, isEmpty: (words) => (words ?? []).length === 0 },
   // 词根包没有 lib/catalog.js 那样的明文骨架，标题不给列表页就是空白卡片。
@@ -54,11 +55,20 @@ const SHAPES = {
     }),
     isEmpty: (x) => (x.lessons ?? []).length === 0,
   },
-  // whole 型传给 meta 的是整个模块的数组（跟 body 是同一个东西），count 就是数组长度。
-  // isEmpty 看的也是这整个数组：listening 只有一个 all 单元，数组空了这一个单元就该
-  // 整个不进清单，不是进去了再显示「0 段」。
+  // 曾经是 whole 型（整个模块揉成一个 unitId:'all' 的单元）：A1 教材听力从 3 段
+  // 扩到 33 段后，这一个单元撑到 144.6KB，单条 INSERT 超了 D1 的 SQLITE_TOOBIG
+  // 上限。改成按段切——一段 3~6KB，安全，而且「单元 = 用户一次点开要看的东西」
+  // 这套架构原则下，一段听力本来就该是一个单元，跟对话/语法/教材同一个「list」
+  // 路子，不用给切分逻辑加新分支。
+  //
+  // meta 摊平 unitZh/code/seconds：列表页要按课（unitZh）分组、显示教材编号
+  // 和时长，这三样以前混在正文里，现在从清单直接摊平出来，不用为了分组先把
+  // 33 段正文全取一遍。
   listening: {
-    kind: 'whole', title: () => null, meta: (arr) => ({ count: arr.length }), isEmpty: (arr) => (arr ?? []).length === 0,
+    kind: 'list',
+    title: (x) => x.titleZh ?? null,
+    meta: (x) => ({ unitZh: x.unitZh ?? null, code: x.code ?? null, seconds: x.seconds ?? null }),
+    isEmpty: (x) => (x.lines ?? []).length === 0,
   },
 };
 
