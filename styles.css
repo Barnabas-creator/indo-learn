@@ -577,8 +577,17 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 /* 语法 */
 /* 课程学习：单元列表 → 课列表 → 课文页 */
 /* 课程按 CEFR 分级分组，未填内容的单元显示「准备中」 */
-.level-head { display: flex; align-items: center; gap: 10px; margin: 20px 4px 10px; }
+.level-head { margin: 20px 4px 10px; }
 .level-head:first-of-type { margin-top: 6px; }
+
+/* 折叠开关：整行都能点，不是只有小箭头那几像素——手机上才好戳。
+   用 button 不用 div+onclick，天生带得到焦点、读得出 aria-expanded。 */
+.level-toggle {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 4px 2px; background: none; border: none; text-align: left; cursor: pointer;
+}
+.level-toggle:active { opacity: .75; }
+.level-caret { flex: none; width: 14px; font-size: 13px; color: var(--mute); text-align: center; }
 .level-tag {
   font-family: var(--serif); font-size: 15px; font-weight: 700; color: #fff;
   background: var(--moss); padding: 3px 12px; border-radius: 999px;
