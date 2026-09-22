@@ -147,7 +147,7 @@ test('renderListenList 按 meta.unitZh 分组，显示教材编号/标题/时长
     },
   ];
   assert.doesNotThrow(() => {
-    renderListenList(root, items, { open() {}, back() {} });
+    renderListenList(root, items, { open() {}, back() {} }, new Set(['A1']));
   });
   assert.match(root.innerHTML, /第 1 课　打招呼与问好/);
   assert.match(root.innerHTML, /第 2 课　认识新朋友/);
@@ -158,4 +158,21 @@ test('renderListenList 按 meta.unitZh 分组，显示教材编号/标题/时长
   // （旧版 "N 题" 那种数字+题的组合），不是把「题」字整体禁掉。
   assert.doesNotMatch(root.innerHTML, /\d+\s*题/);
   assert.doesNotMatch(root.innerHTML, /undefined/);
+});
+
+test('renderListenList 按分级折叠：默认全收起只见分级头，展开哪级只画哪级；缺 level 按 A1', () => {
+  const items = [
+    { id: 'a1', code: 'Simakan 1.1', titleZh: '甲', unitZh: '第 1 课　打招呼', seconds: 20 },
+    { id: 'a2', code: 'Simakan 1A', titleZh: '乙', unitZh: '第 1 课　大家庭', seconds: 90, level: 'A2' },
+  ];
+  const collapsed = fakeRoot();
+  renderListenList(collapsed, items, { open() {}, back() {} });
+  assert.match(collapsed.innerHTML, /A1 初级/);
+  assert.match(collapsed.innerHTML, /A2 初中级/);
+  assert.doesNotMatch(collapsed.innerHTML, /listen-item/);
+
+  const a2 = fakeRoot();
+  renderListenList(a2, items, { open() {}, back() {} }, new Set(['A2']));
+  assert.match(a2.innerHTML, /Simakan 1A/);
+  assert.doesNotMatch(a2.innerHTML, /Simakan 1\.1/);
 });

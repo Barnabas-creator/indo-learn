@@ -67,7 +67,9 @@ const SHAPES = {
   listening: {
     kind: 'list',
     title: (x) => x.titleZh ?? null,
-    meta: (x) => ({ unitZh: x.unitZh ?? null, code: x.code ?? null, seconds: x.seconds ?? null }),
+    meta: (x) => ({
+      unitZh: x.unitZh ?? null, code: x.code ?? null, seconds: x.seconds ?? null, level: x.level ?? null,
+    }),
     isEmpty: (x) => (x.lines ?? []).length === 0,
   },
 };

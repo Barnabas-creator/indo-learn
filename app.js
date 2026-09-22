@@ -570,7 +570,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
       // 整块单元的特例）。
       const items = (contentIndex.modules.listening ?? []).map((u) => ({
         id: u.id, tier: u.tier, code: u.meta?.code ?? null, titleZh: u.title, unitZh: u.meta?.unitZh ?? null,
-        seconds: u.meta?.seconds ?? null,
+        seconds: u.meta?.seconds ?? null, level: u.meta?.level ?? null,
       }));
       return mount((m) =>
         renderListenList(m, items, {

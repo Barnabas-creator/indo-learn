@@ -111,10 +111,10 @@ test('course 的 meta 带课数、印尼语原名（跟 titleZh 区分开）、g
 // 听力从「整块一个 all 单元」改成「一段一个单元」（33 段撑到 144.6KB，单条
 // INSERT 超了 D1 的 SQLITE_TOOBIG 上限）；列表页要按课分组、显示教材编号和
 // 时长，这三样以前在正文里，现在从 meta 摊平出来，不用为了分组/显示先取正文。
-test('listening 的 meta 带 unitZh/code/seconds，不带 lines 等正文字段', () => {
+test('listening 的 meta 带 unitZh/code/seconds/level，不带 lines 等正文字段', () => {
   const units = splitIntoUnits(content, {});
   const meta = units.find((u) => u.module === 'listening').meta;
-  assert.deepEqual(meta, { unitZh: '第 1 课　打招呼与问好', code: 'Simakan 1.1', seconds: 23 });
+  assert.deepEqual(meta, { unitZh: '第 1 课　打招呼与问好', code: 'Simakan 1.1', seconds: 23, level: null });
 });
 
 test('packs 的 meta 是 null——标题骨架都在 lib/catalog.js 里，清单不重复', () => {
