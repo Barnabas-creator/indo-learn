@@ -86,7 +86,9 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
   // 安卓三键导航有返回键、浏览器标签页有返回按钮、每个界面顶栏还有「← 返回」。
   // 删掉它，一个手势就只退一级。
   win?.addEventListener?.('popstate', (e) => {
-    if (!inApp) return; // 停在登录/激活页时不接管，让浏览器按自己的来
+    // 停在登录/激活页时不接管，让浏览器按自己的来——唯一例外是登录/注册页带返回的
+    // 时候（免费层匿名也能逛主界面），系统返回手势跟页面上的「← 返回」一样退回主界面。
+    if (!inApp && !authBackable()) return;
     view = e?.state?.view ?? 'home';
     tts.stop();
     render();
@@ -94,6 +96,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
 
   function showUnlock(error = '', busy = false) {
     inApp = false;
+    onAuthPage = false;
     renderUnlock(root, {
       error,
       busy,
@@ -125,11 +128,23 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
   };
   const clearPendingCode = () => localStorage.removeItem(PENDING_CODE_KEY);
 
+  // 登录/注册页的返回：远程模式有免费层，不登录也能用主界面，所以总能退回去。
+  // 清单已经拿到就直接 render() 回到原位；启动时试用到期那条路清单还没取，
+  // 走 loadPacksAfterUnlock() 以匿名身份取一次。密码模式没有免费层，不给返回。
+  let onAuthPage = false;
+  const authBackable = () => onAuthPage && AUTH_MODE === 'server';
+  const authBack = () => {
+    onAuthPage = false;
+    return Object.keys(contentIndex.modules ?? {}).length ? render() : loadPacksAfterUnlock();
+  };
+
   function showLogin(error = '', busy = false) {
     inApp = false;
+    onAuthPage = true;
     renderLogin(root, {
       error,
       busy,
+      onBack: authBackable() && !busy ? authBack : null,
       onSwitch: () => showRegister(),
       onSubmit: async (email, password) => {
         showLogin('', true);
@@ -153,9 +168,11 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
 
   function showRegister(error = '', busy = false) {
     inApp = false;
+    onAuthPage = true;
     renderRegister(root, {
       error,
       busy,
+      onBack: authBackable() && !busy ? authBack : null,
       onSwitch: () => showLogin(),
       onSubmit: async (email, password) => {
         showRegister('', true);
@@ -194,6 +211,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
   }
 
   function showActivate(error = '', busy = false, inputCode = null, notice = '') {
+    onAuthPage = false;
     // 暂存码是跟邮箱绑定的：换了账号登录，不能把上一个账号的码带出来。
     let pending = readPendingCode();
     if (pending && pending.email !== sessionEmail) {
@@ -409,6 +427,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
     const main = document.createElement('div');
     root.innerHTML = '';
     inApp = true;
+    onAuthPage = false;
     renderTrialBanner(root);
     renderVoiceHint(root);
     root.append(main);
@@ -777,6 +796,7 @@ export function start(root, provider, tts, { history: hist = globalThis.history,
 
   function showContentRetry() {
     inApp = false;
+    onAuthPage = false;
     root.innerHTML = '<div class="stack">'
       + '<p class="error">内容暂时读取失败，请检查网络后重试</p>'
       + '<button class="retry">重试</button></div>';

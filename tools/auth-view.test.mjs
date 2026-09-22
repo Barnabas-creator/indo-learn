@@ -155,3 +155,24 @@ test('激活成功页写着鼓励语和表情', () => {
   assert.match(root.innerHTML, /💪|🎉/);
   assert.match(root.innerHTML, /class="next primary"/);
 });
+
+test('登录/注册传 onBack 时有返回按钮且点了会调用，不传就没有', () => {
+  for (const render of [renderLogin, renderRegister]) {
+    let clicked = false;
+    const handlers = {};
+    const root = {
+      innerHTML: '',
+      querySelector(sel) {
+        return { addEventListener(_, fn) { handlers[sel] = fn; }, classList: { add() {}, remove() {} } };
+      },
+    };
+    render(root, { onSubmit() {}, onSwitch() {}, onBack: () => { clicked = true; } });
+    assert.match(root.innerHTML, /class="back"/);
+    handlers['.back']();
+    assert.ok(clicked);
+
+    const plain = fakeRoot();
+    render(plain, { onSubmit() {}, onSwitch() {} });
+    assert.doesNotMatch(plain.innerHTML, /class="back"/);
+  }
+});

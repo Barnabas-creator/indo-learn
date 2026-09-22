@@ -100,9 +100,12 @@ export async function recordError(db, {
 // 11.5：清单对所有人一样，一律出全部单元的元数据——「谁能看正文」由
 // GET /content/:module/:id 按账号鉴权把关，这里不再按 tier 过滤，也就不再需要
 // includePaid 这个参数了（旧调用方全部换掉了，见 content.js handleContentIndex）。
+// 模块内按 rowid 排＝按源文件顺序：push-content 每次全量 INSERT OR REPLACE（先删后插，
+// rowid 重新分配），插入顺序就是 content-src 里的顺序。按 unit_id 排会把语法排成
+// affix/basic/phonetic/syntax、对话也按字母乱序。
 export async function listContentUnits(db) {
   const res = await db
-    .prepare('SELECT module, unit_id, tier, title, meta FROM content ORDER BY module, unit_id')
+    .prepare('SELECT module, unit_id, tier, title, meta FROM content ORDER BY module, rowid')
     .all();
   return res.results ?? [];
 }
