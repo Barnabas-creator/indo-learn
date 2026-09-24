@@ -12,7 +12,7 @@
 // CACHE 名仍然要在外壳文件增删时改（addAll 的清单变了），但即使忘了改，
 // network-first 也不会再把用户钉死在旧版本上。
 
-const CACHE = 'indo-learn-v24';
+const CACHE = 'indo-learn-v25';
 
 const SHELL = [
   './',
@@ -45,6 +45,7 @@ const SHELL = [
   './lib/server-provider.js',
   './lib/idb-cache.js',
   './lib/views/auth.js',
+  './lib/pull-refresh.js',
 ];
 
 // 不可变资源：URL 变了内容才会变，可以放心 cache-first。

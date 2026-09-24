@@ -24,6 +24,7 @@
   import { createUnitCache } from './lib/idb-cache.js';
   import { createTts } from './lib/tts.js';
   import { start } from './app.js';
+  import './lib/pull-refresh.js';
 
   const fetchJson = async (path) => {
     const res = await fetch(path, { cache: 'no-store' });
