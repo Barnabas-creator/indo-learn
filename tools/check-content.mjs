@@ -360,7 +360,9 @@ export function validateListening(items) {
       if (!it?.[f]) problems.push(`听力 ${it?.id ?? '?'} 缺字段 ${f}`);
     }
     const at = `听力 ${it?.id ?? '?'}`;
-    if (it?.audio && !/^assets\/audio\/.+\.(m4a|mp3)$/.test(it.audio)) {
+    // 音频目录带版本号（audio-v2 …）：sw.js 对 assets/** 走 cache-first，重新处理过的音频
+    // 必须换 URL，装过 App 的手机才拿得到新版。
+    if (it?.audio && !/^assets\/audio(-v\d+)?\/.+\.(m4a|mp3)$/.test(it.audio)) {
       problems.push(`${at} 的 audio 路径不对：${it.audio}`);
     }
     if (!(it?.seconds > 0)) problems.push(`${at} 缺时长 seconds`);
